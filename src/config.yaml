@@ -1,0 +1,55 @@
+paths:
+  init_memes: "init_memes.txt"
+  graph_save_dir: "saved"
+  graph_basename: "small_worlds_test"
+  vis_dir: "vis"
+  log_file: "simulation.log"
+
+graph_generation:
+  type: 'small_worlds'  # 'example' or 'small_world' or 'small_worlds'
+  initial_meme_assignment: 'random'  # Assignment of memes to nodes: random or structured
+  params:
+    n: 30      # Nodes per group (for small_worlds) or total nodes (for small_world)
+    k: 4       # Each node is joined with its k nearest neighbors in ring topology
+    p: 0.3     # Probability of rewiring each edge (small_world/s)
+    b: 0.3     # Probability of adding a backward edge
+    g: 4       # Number of groups (for small_worlds)
+    inter_p: 0.1 # Probability of inter-group connection (for small_worlds)
+
+simulation:
+  generations: 100
+  threshold: 0.2  # Score ratio threshold for merge/mutate/keep decision
+  initial_score: true # Whether to score initial memes before first generation
+
+llm:
+  model_huggingpath: "microsoft/Phi-3-mini-4k-instruct"
+  # Optional: Add API keys if needed for certain models/APIs
+  # api_key: "YOUR_API_KEY"
+  temperature_mutate: 0.5
+  temperature_merge: 0.5
+  temperature_score: 0.2
+  max_new_tokens: 100
+  # prompt_mutate: "..."
+
+embeddings:
+  model_path: "bert-base-uncased" # For general embeddings
+  sentence_model_path: "bert-base-uncased" # For semantic difference (SentenceTransformer compatible)
+
+visualization:
+  # Per-generation plots
+  draw_change_per_gen: true
+  draw_score_per_gen: true
+  draw_semantic_diff_per_gen: true
+  # Final plots
+  draw_final_embs: true
+  plot_final_score_history: true
+  # Plot settings
+  node_min_size: 20
+  node_max_size: 400
+  edge_base_thickness: 1.0
+  edge_base_opacity: 0.5
+  label_max_len: 64
+  dpi: 150
+
+logging:
+  level: "INFO" # DEBUG, INFO, WARNING, ERROR, CRITICAL

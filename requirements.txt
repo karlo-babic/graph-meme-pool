@@ -1,0 +1,10 @@
+networkx>=3.0
+matplotlib>=3.5
+numpy>=1.21
+PyYAML>=6.0
+transformers>=4.30 # Or a version compatible with your model
+torch>=2.0 # Or version compatible with transformers/CUDA
+sentence-transformers>=2.2 # For embeddings
+scikit-learn>=1.0 # For TSNE, cosine_similarity
+huggingface_hub>=0.14 # For model download etc.
+accelerate # Often needed by transformers for optimal performance

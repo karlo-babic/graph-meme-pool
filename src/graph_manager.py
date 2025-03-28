@@ -1,0 +1,472 @@
+import networkx as nx
+import random
+import json
+import logging
+from pathlib import Path
+from typing import List, Any, Optional, Dict, Tuple
+from networkx.readwrite import json_graph
+
+from data_structures import MemeNodeData, PropagationEvent
+
+logger = logging.getLogger(__name__)
+
+class GraphManager:
+    """Manages the NetworkX graph, node data, persistence, and propagation history."""
+
+    def __init__(self, config: Dict):
+        self.config = config
+        self.graph = nx.DiGraph()
+        self.propagation_history: List[PropagationEvent] = []
+        self.random_seed = config.get('seed', 1) # Store seed
+        random.seed(self.random_seed)
+        self.assignment_strategy = config.get('graph_generation', {}).get('initial_meme_assignment', 'structured')
+        logger.info(f"Initial meme assignment strategy: '{self.assignment_strategy}'")
+
+    def _load_initial_memes(self) -> List[str]:
+        """Loads initial memes from the configured file."""
+        meme_file = self.config['paths']['init_memes']
+        try:
+            with open(meme_file, "r", encoding="utf-8") as f:
+                memes = [line.strip() for line in f if line.strip()]
+            if not memes:
+                logger.error(f"No memes found in {meme_file}. Cannot initialize graph.")
+                raise ValueError(f"Meme file {meme_file} is empty or invalid.")
+            logger.info(f"Loaded {len(memes)} initial memes from {meme_file}")
+            return memes
+        except FileNotFoundError:
+            logger.error(f"Initial meme file not found: {meme_file}")
+            raise
+        except Exception as e:
+            logger.error(f"Error reading meme file {meme_file}: {e}")
+            raise
+
+    def create_graph(self):
+        """Creates a graph based on the configuration."""
+        gen_type = self.config['graph_generation']['type']
+        params = self.config['graph_generation']['params']
+        initial_memes = self._load_initial_memes()
+
+        logger.info(f"Creating graph of type '{gen_type}' with params: {params}")
+
+        if gen_type == 'example': # Simple example for testing
+             self._create_example_graph(initial_memes)
+        elif gen_type == 'small_world':
+             self._create_small_world_graph(initial_memes, **params)
+        elif gen_type == 'small_worlds':
+             self._create_multiple_small_worlds_graph(initial_memes, **params)
+        else:
+            raise ValueError(f"Unknown graph generation type: {gen_type}")
+
+        logger.info(f"Graph created with {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges.")
+
+    def _create_example_graph(self, memes: List[str]):
+        G = self.graph # Use the class's graph attribute
+        n_nodes = 5
+        for i in range(n_nodes):
+            meme = memes[i % len(memes)]
+            node_id = i + 1
+            data = MemeNodeData(node_id=node_id, current_meme=meme)
+            G.add_node(node_id, data=data)
+
+        G.add_edge(1, 2, weight=0.8)
+        G.add_edge(2, 1, weight=0.2)
+        G.add_edge(2, 3, weight=0.5)
+        G.add_edge(3, 1, weight=0.4)
+        G.add_edge(4, 3, weight=0.8)
+        G.add_edge(3, 5, weight=0.6)
+        # Add node 4, 5 if not added via edges (needed for isolated nodes too)
+        if 4 not in G: G.add_node(4, data=MemeNodeData(node_id=4, current_meme=memes[3 % len(memes)]))
+        if 5 not in G: G.add_node(5, data=MemeNodeData(node_id=5, current_meme=memes[4 % len(memes)]))
+
+
+    def _get_meme_from_index(self, memes: List[str], meme_index: int) -> Optional[str]:
+        """Safely retrieves a meme string from the list using an index."""
+        if not memes:
+            logger.error("Meme list is empty.")
+            return None
+        if 0 <= meme_index < len(memes):
+            return memes[meme_index]
+        else:
+            logger.warning(f"Meme index {meme_index} out of range ({len(memes)} memes). Using index 0.")
+            return memes[0]
+
+    def _calculate_initial_meme_ids(self,
+                                    num_nodes: int,
+                                    num_initial_memes: int,
+                                    strategy: str,
+                                    num_groups: Optional[int] = None,
+                                    nodes_per_group: Optional[int] = None) -> List[int]:
+        """Calculates the list of meme indices for node initialization based on strategy,
+           attempting to use all available initial memes."""
+
+        if num_initial_memes <= 0:
+            logger.error("Cannot calculate meme IDs: Number of initial memes is zero or less.")
+            return [-1] * num_nodes # Return error indicator
+
+        meme_ids = [-1] * num_nodes # Initialize with placeholder
+
+        if strategy == 'random':
+            logger.debug(f"Calculating 'random' (balanced/shuffled) assignment for {num_nodes} nodes using {num_initial_memes} memes.")
+
+            # Create a list with approximately equal counts of each meme index
+            ids_to_shuffle = []
+            base_count = num_nodes // num_initial_memes
+            remainder = num_nodes % num_initial_memes
+
+            for i in range(num_initial_memes):
+                ids_to_shuffle.extend([i] * base_count) # Add base count for each meme
+            # Distribute the remainder among the first 'remainder' memes
+            ids_to_shuffle.extend(range(remainder))
+
+            # Shuffle the list using the instance's seed for reproducibility
+            local_random = random.Random(self.random_seed)
+            local_random.shuffle(ids_to_shuffle)
+            meme_ids = ids_to_shuffle
+            logger.debug(f"Shuffled meme IDs for random assignment: {meme_ids[:20]}...") # Log first few
+
+        elif strategy == 'structured':
+            if num_groups is not None and nodes_per_group is not None and num_groups > 0 and nodes_per_group > 0:
+                # Multi-group structured assignment: Cycle through ALL memes based on group index
+                logger.debug(f"Calculating 'structured' (by group, cycling all memes) assignment for {num_groups} groups.")
+                for i in range(num_nodes):
+                    group_idx = i // nodes_per_group
+                    meme_ids[i] = group_idx % num_initial_memes # Cycle through all memes
+            else:
+                # Single-graph structured assignment: Cycle through ALL memes based on node index
+                logger.debug(f"Calculating 'structured' (cycling all memes) assignment for {num_nodes} nodes.")
+                meme_ids = [i % num_initial_memes for i in range(num_nodes)] # Cycle through all memes
+        else:
+             logger.warning(f"Unknown assignment strategy '{strategy}'. Defaulting to structured (cycling).")
+             # Default logic depends on whether it's single or multi-graph context
+             if num_groups is not None and nodes_per_group is not None:
+                  # Default to multi-group structured (cycling all)
+                   for i in range(num_nodes):
+                       group_idx = i // nodes_per_group
+                       meme_ids[i] = group_idx % num_initial_memes
+             else:
+                  # Default to single-graph structured (cycling all)
+                  meme_ids = [i % num_initial_memes for i in range(num_nodes)]
+
+        # Final length check
+        if len(meme_ids) != num_nodes:
+             logger.error(f"Calculated meme ID list length ({len(meme_ids)}) does not match number of nodes ({num_nodes}). Check logic.")
+             # Handle error: maybe return error list or raise exception
+             return [-1] * num_nodes
+
+        return meme_ids
+    
+    def _create_small_world_graph(self, memes: List[str], n: int, k: int, p: float, b: float, **kwargs):
+        G = self.graph
+        num_initial_memes = len(memes)
+        if num_initial_memes == 0:
+             logger.critical("No initial memes loaded. Cannot create graph nodes properly.")
+             return
+
+        # Calculate meme IDs using the helper method
+        meme_ids = self._calculate_initial_meme_ids(
+            num_nodes=n,
+            num_initial_memes=num_initial_memes,
+            strategy=self.assignment_strategy
+        )
+
+        # Create graph topology
+        undirected_G = nx.watts_strogatz_graph(n, k, p, seed=random.randint(0, 10000))
+
+        # Add nodes with assigned memes
+        for i in range(n):
+            meme_index = meme_ids[i]
+            if meme_index == -1: # Check for error from helper
+                 logger.error(f"Skipping node {i} due to meme ID calculation error.")
+                 continue
+            meme = self._get_meme_from_index(memes, meme_index)
+            if meme is None:
+                 logger.error(f"Skipping node {i} due to meme retrieval error for index {meme_index}.")
+                 continue
+            data = MemeNodeData(node_id=i, current_meme=meme)
+            G.add_node(i, data=data)
+
+        # Add edges
+        for u, v in undirected_G.edges():
+            weight = round(random.uniform(0.1, 1.0), 2)
+            G.add_edge(u, v, weight=weight)
+            if random.random() < b:
+                bidir_weight = round(random.uniform(0.1, 1.0), 2)
+                G.add_edge(v, u, weight=bidir_weight)
+
+    def _create_multiple_small_worlds_graph(self, memes: List[str], n: int, k: int, p: float, b: float, g: int, inter_p: float, **kwargs):
+        G = self.graph
+        num_initial_memes = len(memes)
+        if num_initial_memes == 0:
+             logger.critical("No initial memes loaded. Cannot create graph nodes properly.")
+             return
+
+        total_nodes = n * g
+
+        # Calculate meme IDs using the helper method
+        meme_ids = self._calculate_initial_meme_ids(
+            num_nodes=total_nodes,
+            num_initial_memes=num_initial_memes,
+            strategy=self.assignment_strategy,
+            num_groups=g,
+            nodes_per_group=n
+        )
+
+        # Create nodes and intra-group edges
+        for group_idx in range(g):
+            # Generate topology specific to this group (optional, could be done once globally too)
+            undirected_G = nx.watts_strogatz_graph(n, k, p, seed=random.randint(0, 10000))
+            node_offset = group_idx * n
+
+            for i in range(n):
+                global_id = node_offset + i
+                meme_index = meme_ids[global_id] # Get pre-assigned meme ID
+                if meme_index == -1:
+                    logger.error(f"Skipping node {global_id} due to meme ID calculation error.")
+                    continue
+                meme = self._get_meme_from_index(memes, meme_index)
+                if meme is None:
+                    logger.error(f"Skipping node {global_id} due to meme retrieval error for index {meme_index}.")
+                    continue
+                # Assign group info regardless of assignment strategy
+                data = MemeNodeData(node_id=global_id, current_meme=meme, group=group_idx)
+                G.add_node(global_id, data=data)
+
+            # Add intra-group edges
+            for u_local, v_local in undirected_G.edges():
+                 u_global = node_offset + u_local
+                 v_global = node_offset + v_local
+                 # Check if nodes were actually added (in case of errors)
+                 if u_global in G and v_global in G:
+                      weight = round(random.uniform(0.3, 0.95), 2)
+                      G.add_edge(u_global, v_global, weight=weight)
+                      if random.random() < b:
+                          bidir_weight = round(random.uniform(0.3, 0.95), 2)
+                          G.add_edge(v_global, u_global, weight=bidir_weight)
+
+        # Calculate and add inter-group edges based on global_ids...
+        for i in range(g):
+            for j in range(i + 1, g):
+                nodes_i = list(range(i * n, (i + 1) * n))
+                nodes_j = list(range(j * n, (j + 1) * n))
+
+                # Filter out nodes that might not exist due to errors
+                valid_nodes_i = [node for node in nodes_i if node in G]
+                valid_nodes_j = [node for node in nodes_j if node in G]
+                if not valid_nodes_i or not valid_nodes_j: continue # Skip if a group is empty
+
+                for u in valid_nodes_i:
+                    if random.random() < inter_p:
+                        v = random.choice(valid_nodes_j)
+                        weight = round(random.uniform(0.05, 0.3), 2)
+                        G.add_edge(u, v, weight=weight)
+
+                for v in valid_nodes_j:
+                    if random.random() < inter_p:
+                        u = random.choice(valid_nodes_i)
+                        weight = round(random.uniform(0.05, 0.3), 2)
+                        G.add_edge(v, u, weight=weight)
+
+
+    def save_graph(self, filename: Optional[str] = None):
+        """Saves the graph state to a JSON file."""
+        if filename is None:
+            filename = self.config['paths']['graph_basename']
+        save_dir = Path(self.config['paths']['graph_save_dir'])
+        filepath = save_dir / f"{filename}.json"
+
+        try:
+            # Convert MemeNodeData objects to dictionaries for serialization
+            serializable_data = json_graph.node_link_data(self.graph)
+            for node in serializable_data['nodes']:
+                 if 'data' in node and isinstance(node['data'], MemeNodeData):
+                     node['data'] = node['data'].__dict__ # Convert dataclass to dict
+
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(serializable_data, f, indent=2)
+            logger.info(f"Graph saved successfully to {filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save graph to {filepath}: {e}")
+
+    def load_graph(self, filename: Optional[str] = None):
+        """Loads the graph state from a JSON file."""
+        if filename is None:
+            filename = self.config['paths']['graph_basename']
+        load_dir = Path(self.config['paths']['graph_save_dir'])
+        filepath = load_dir / f"{filename}.json"
+
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            # Convert dictionaries back to MemeNodeData objects
+            for node_data_dict in data.get('nodes', []):
+                if 'data' in node_data_dict and isinstance(node_data_dict['data'], dict):
+                    # Recreate MemeNodeData, handling potential missing fields gracefully
+                    node_id = node_data_dict.get('id') # Get id from the main node dict
+                    if node_id is None:
+                         logger.warning("Node dictionary missing 'id' during load.")
+                         continue # Skip if no ID
+
+                    # Use get with defaults for MemeNodeData fields
+                    meme_data_args = {
+                        'node_id': node_id,
+                        'current_meme': node_data_dict['data'].get('current_meme', ''),
+                        'history': node_data_dict['data'].get('history', []),
+                        'history_scores': node_data_dict['data'].get('history_scores', []),
+                        'current_meme_score': node_data_dict['data'].get('current_meme_score', None),
+                        'received_memes': node_data_dict['data'].get('received_memes', []),
+                        'group': node_data_dict['data'].get('group', None)
+                    }
+                    node_data_dict['data'] = MemeNodeData(**meme_data_args)
+
+
+            self.graph = json_graph.node_link_graph(data, directed=True, multigraph=False)
+            logger.info(f"Graph loaded successfully from {filepath}")
+            logger.info(f"Loaded graph has {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges.")
+            # Optionally load propagation history if saved separately
+        except FileNotFoundError:
+            logger.error(f"Graph file not found: {filepath}")
+            raise
+        except json.JSONDecodeError:
+            logger.error(f"Error decoding JSON from graph file: {filepath}")
+            raise
+        except Exception as e:
+            logger.error(f"Failed to load graph from {filepath}: {e}")
+            raise
+
+    def save_propagation_history(self, filename: Optional[str] = None):
+        """Saves the propagation history to a JSON file."""
+        if not self.propagation_history:
+            logger.info("No propagation history to save.")
+            return
+
+        if filename is None:
+            filename = self.config['paths']['graph_basename'] + "_propagation"
+        save_dir = Path(self.config['paths']['graph_save_dir'])
+        filepath = save_dir / f"{filename}.json"
+
+        try:
+            # Convert PropagationEvent objects to dictionaries
+            serializable_history = [event.__dict__ for event in self.propagation_history]
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(serializable_history, f, indent=2)
+            logger.info(f"Propagation history saved successfully to {filepath}")
+        except Exception as e:
+            logger.error(f"Failed to save propagation history to {filepath}: {e}")
+
+    # --- Graph Data Access Methods ---
+
+    def get_node_data(self, node_id: Any) -> Optional[MemeNodeData]:
+        """Retrieves the MemeNodeData for a given node."""
+        if node_id in self.graph:
+            return self.graph.nodes[node_id].get('data')
+        logger.warning(f"Attempted to get data for non-existent node: {node_id}")
+        return None
+
+    def get_all_node_ids(self) -> List[Any]:
+        """Returns a list of all node IDs."""
+        return list(self.graph.nodes)
+
+    def get_all_nodes_data(self) -> Dict[Any, MemeNodeData]:
+        """Retrieves MemeNodeData for all nodes."""
+        all_data = {}
+        for node_id, node_attrs in self.graph.nodes(data=True):
+             data = node_attrs.get('data')
+             if data:
+                 all_data[node_id] = data
+             else:
+                 logger.warning(f"Node {node_id} is missing 'data' attribute.")
+        return all_data
+
+
+    def get_neighbors(self, node_id: Any) -> List[Any]:
+        """Returns the list of successor nodes (neighbors this node influences)."""
+        if node_id in self.graph:
+            return list(self.graph.successors(node_id))
+        return []
+
+    def get_predecessors(self, node_id: Any) -> List[Any]:
+         """Returns the list of predecessor nodes (neighbors influencing this node)."""
+         if node_id in self.graph:
+             return list(self.graph.predecessors(node_id))
+         return []
+
+    def get_edge_weight(self, u: Any, v: Any) -> float:
+        """Returns the weight of the edge from u to v."""
+        if self.graph.has_edge(u, v):
+            return self.graph[u][v].get('weight', 0.0)
+        return 0.0
+
+    def update_node_meme(self, node_id: Any, new_meme: str, new_score: Optional[float], generation: int):
+        """Updates the current meme, score, and history for a node."""
+        node_data = self.get_node_data(node_id)
+        if node_data:
+            node_data.current_meme = new_meme
+            node_data.current_meme_score = new_score
+            node_data.history.append(new_meme)
+            # Ensure history_scores aligns with history
+            score_to_add = new_score if new_score is not None else None
+            # Pad previous scores if needed (e.g., if initial scoring was skipped)
+            if len(node_data.history_scores) < len(node_data.history) - 1:
+                padding = [None] * (len(node_data.history) - 1 - len(node_data.history_scores))
+                node_data.history_scores.extend(padding)
+            node_data.history_scores.append(score_to_add)
+
+            # Optionally log the update
+            # logger.debug(f"Gen {generation}: Node {node_id} updated meme to '{new_meme[:30]}...' (Score: {new_score})")
+        else:
+            logger.warning(f"Attempted to update non-existent node: {node_id}")
+
+    def update_node_score(self, node_id: Any, score: float, history_index: int = -1):
+         """Updates the score of a meme (current or historical) for a node."""
+         node_data = self.get_node_data(node_id)
+         if node_data:
+              if history_index == -1 or history_index >= len(node_data.history_scores):
+                   node_data.current_meme_score = score
+                   # Ensure the latest score in history is also updated
+                   if node_data.history_scores:
+                        node_data.history_scores[-1] = score
+                   # logger.debug(f"Node {node_id}: Updated current score to {score}")
+              else:
+                   node_data.history_scores[history_index] = score
+                   # logger.debug(f"Node {node_id}: Updated historical score at index {history_index} to {score}")
+         else:
+             logger.warning(f"Attempted to update score for non-existent node: {node_id}")
+
+
+    def add_received_meme(self, node_id: Any, meme: str, weight: float):
+        """Adds a meme received by a node in the current step."""
+        node_data = self.get_node_data(node_id)
+        if node_data:
+            node_data.received_memes.append((meme, weight))
+        else:
+            logger.warning(f"Attempted to add received meme to non-existent node: {node_id}")
+
+    def clear_received_memes(self, node_id: Optional[Any] = None):
+        """Clears the list of received memes for one or all nodes."""
+        if node_id is not None:
+            node_data = self.get_node_data(node_id)
+            if node_data:
+                node_data.received_memes = []
+        else: # Clear for all nodes
+            for node_id in self.get_all_node_ids():
+                 node_data = self.get_node_data(node_id)
+                 if node_data:
+                      node_data.received_memes = []
+
+    # --- Propagation Tracking ---
+
+    def record_propagation(self, generation: int, source: Any, target: Any, meme: str, weight: float):
+        """Records a meme propagation event."""
+        event = PropagationEvent(
+            generation=generation,
+            source_node=source,
+            target_node=target,
+            meme=meme,
+            weight=weight
+        )
+        self.propagation_history.append(event)
+
+    def get_propagation_history(self) -> List[PropagationEvent]:
+        """Returns the recorded propagation history."""
+        return self.propagation_history
