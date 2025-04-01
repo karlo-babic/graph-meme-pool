@@ -341,7 +341,7 @@ class EvolutionEngine:
         logger.info(f"--- Finished Generation {generation} ---")
 
 
-    def run_simulation(self) -> int:
+    def run_simulation(self):
         """Runs the full simulation loop."""
         num_generations = self.config['generations']
         logger.info(f"Starting simulation for {num_generations} generations.")

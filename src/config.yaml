@@ -29,7 +29,30 @@ llm:
   temperature_merge: 0.5
   temperature_score: 0.2
   max_new_tokens: 100
-  # prompt_mutate: "..."
+  prompt_mutate: |
+    I will change the following text, keeping the topic and approximate word count the same.
+    I will output only the modified text, starting with "<modified text>" and ending with "</modified text>".
+  prompt_merge: |
+    I will sligtly adjust text1 to be semantically closer to text2.
+    The final text cannot exceed the length of the text1, so I will keep it very short.
+    I will output only the new text, starting with "<new text>" and ending with "</new text>".
+  prompt_score: |
+    The text is rigorously evaluated for virality on a strict 0 to 9 scale based on these criteria:
+    - Immediate attention-grabbing appeal
+    - Strong emotional response or high relatability
+    - Clear and concise messaging, easy to share and understand
+    - High potential for discussion, controversy, or widespread interest
+    Rating Scale Guidelines:
+    9 Exceptional: Highly shareable, evokes strong emotions, and sparks conversation instantly.
+    8 Outstanding: Compelling, emotionally engaging, and likely to be widely spread.
+    7 Excellent: Strongly resonates with audiences, though slightly less universally viral.
+    6 Strong: Attention-grabbing and interesting but not overwhelmingly shareable.
+    5 Good: Holds interest and has some viral potential but lacks a strong hook.
+    4 Acceptable: Somewhat engaging but unlikely to gain significant traction.
+    3 Weak: Passable but lacks the elements needed for virality.
+    2 Poor: Struggles to generate interest or lacks clear viral appeal.
+    1 Very Poor: Unlikely to be shared due to weak impact or unclear messaging.
+    0 Non-viral: Completely fails to capture attention or interest.
 
 embeddings:
   model_path: "bert-base-uncased" # For general embeddings
@@ -54,4 +77,4 @@ visualization:
 seed: 1
 
 logging:
-  level: "INFO" # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "INFO" # Levels: DEBUG, INFO, WARNING, ERROR, CRITICAL

@@ -196,11 +196,7 @@ class LLMService(LLMServiceInterface):
         if temperature is None:
             temperature = self.config['temperature_mutate']
 
-        # Consider making prompts configurable
-        preprompt = (
-            "I will change the following text, keeping the topic and approximate word count the same. "
-            "I will output only the modified text, starting with \"<modified text>\" and ending with \"</modified text>\".\n\n"
-        )
+        preprompt = self.config['prompt_mutate'] + "\n\n"
         prompts = [preprompt + f"<text>\n{text}\n</text>\n\n<modified text>" for text in texts]
         stop_sequence = "</modified text>"
 
@@ -231,11 +227,7 @@ class LLMService(LLMServiceInterface):
         if temperature is None:
             temperature = self.config['temperature_merge']
 
-        preprompt = (
-            "I will sligtly adjust text1 to be semantically closer to text2. "
-            "The final text cannot exceed the length of the text1, so I will keep it very short. "
-            "I will output only the new text, starting with \"<new text>\" and ending with \"</new text>\".\n\n"
-        )
+        preprompt = self.config['prompt_merge'] + "\n\n"
         prompts = [preprompt + f"<text1>\n{t1}\n</text1>\n<text2>\n{t2}\n</text2>\n\n<new text>" for t1, t2 in zip(texts1, texts2)]
         stop_sequence = "</new text>"
 
@@ -264,26 +256,8 @@ class LLMService(LLMServiceInterface):
             temperature = self.config['temperature_score']
 
         max_score = 9 # The scale used in the prompt
-        preprompt_virality = (
-            "The text is rigorously evaluated for virality on a strict 0 to 9 scale based on these criteria:\n"
-            "- Immediate attention-grabbing appeal\n"
-            "- Strong emotional response or high relatability\n"
-            "- Clear and concise messaging, easy to share and understand\n"
-            "- High potential for discussion, controversy, or widespread interest\n\n"
-            "Rating Scale Guidelines:\n"
-            "9 Exceptional: Highly shareable, evokes strong emotions, and sparks conversation instantly.\n"
-            "8 Outstanding: Compelling, emotionally engaging, and likely to be widely spread.\n"
-            "7 Excellent: Strongly resonates with audiences, though slightly less universally viral.\n"
-            "6 Strong: Attention-grabbing and interesting but not overwhelmingly shareable.\n"
-            "5 Good: Holds interest and has some viral potential but lacks a strong hook.\n"
-            "4 Acceptable: Somewhat engaging but unlikely to gain significant traction.\n"
-            "3 Weak: Passable but lacks the elements needed for virality.\n"
-            "2 Poor: Struggles to generate interest or lacks clear viral appeal.\n"
-            "1 Very Poor: Unlikely to be shared due to weak impact or unclear messaging.\n"
-            "0 Non-viral: Completely fails to capture attention or interest.\n\n"
-            "Text: "
-        )
-        prompts = [preprompt_virality + text + "\n\nRating:" for text in texts]
+        preprompt = self.config['prompt_score'] + "\n\nText: "
+        prompts = [preprompt + text + "\n\nRating:" for text in texts]
         # No explicit stop sequence needed, relying on parsing the number
         stop_sequence = "\n" # Or just rely on max_new_tokens
 

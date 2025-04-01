@@ -94,7 +94,6 @@ if __name__ == "__main__":
          simulation_generator = evolution_engine.run_simulation()
 
          for completed_generation_index in simulation_generator:
-              logger.info(f"Completed Generation {completed_generation_index + 1}.")
               # Per-generation visualization calls controlled here
               if config['visualization']['draw_score_per_gen']:
                    visualizer.draw_score(generation=completed_generation_index + 1)
