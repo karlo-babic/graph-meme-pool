@@ -9,15 +9,15 @@ graph_generation:
   type: 'small_worlds'  # 'example' or 'small_world' or 'small_worlds'
   initial_meme_assignment: 'random'  # Assignment of memes to nodes: random or structured
   params:
-    n: 30      # Nodes per group (for small_worlds) or total nodes (for small_world)
+    n: 10      # Nodes per group (for small_worlds) or total nodes (for small_world)
     k: 4       # Each node is joined with its k nearest neighbors in ring topology
     p: 0.3     # Probability of rewiring each edge (small_world/s)
     b: 0.3     # Probability of adding a backward edge
-    g: 4       # Number of groups (for small_worlds)
+    g: 2       # Number of groups (for small_worlds)
     inter_p: 0.1 # Probability of inter-group connection (for small_worlds)
 
 simulation:
-  generations: 100
+  generations: 3
   threshold: 0.2  # Score ratio threshold for merge/mutate/keep decision
   initial_score: true # Whether to score initial memes before first generation
 
@@ -50,6 +50,8 @@ visualization:
   edge_base_opacity: 0.5
   label_max_len: 64
   dpi: 150
+
+seed: 1
 
 logging:
   level: "INFO" # DEBUG, INFO, WARNING, ERROR, CRITICAL

@@ -28,8 +28,7 @@ DEFAULT_CONFIG = {
         'max_new_tokens': 100
     },
     'embeddings': {
-        'model_path': "bert-base-uncased",
-        'sentence_model_path': "bert-base-uncased"
+        'model_path': "bert-base-uncased"
     },
     'visualization': {
         'draw_change_per_gen': True,
@@ -44,6 +43,7 @@ DEFAULT_CONFIG = {
         'label_max_len': 64,
         'dpi': 150
     },
+    'seed': 1,
     'logging': {
         'level': "INFO"
     }

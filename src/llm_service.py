@@ -94,8 +94,8 @@ class LLMService(LLMServiceInterface):
             logger.info(f"Model {self.model_huggingpath} loaded successfully on device {self.device}.")
         except Exception as e:
             logger.error(f"Failed to load model {self.model_huggingpath}: {e}")
-            # Depending on severity, you might want to exit or fallback
             raise RuntimeError(f"LLM loading failed: {e}") from e
+            sys.exit(1)
 
     def _generate_with_retry(self,
                                 prompts: List[str],
@@ -194,7 +194,7 @@ class LLMService(LLMServiceInterface):
 
     def mutate(self, texts: List[str], temperature: Optional[float] = None) -> List[str]:
         if temperature is None:
-            temperature = self.config.get('temperature_mutate', 0.7)
+            temperature = self.config['temperature_mutate']
 
         # Consider making prompts configurable
         preprompt = (
@@ -215,7 +215,7 @@ class LLMService(LLMServiceInterface):
         logger.info(f"Mutating {len(texts)} texts...")
         results = self._generate_with_retry(
             prompts,
-            max_new_tokens=self.config.get('max_new_tokens', 100),
+            max_new_tokens=self.config['max_new_tokens'],
             temperature=temperature,
             stop_sequence=stop_sequence,
             validation_fn=validation_fn,
@@ -229,7 +229,7 @@ class LLMService(LLMServiceInterface):
         if len(texts1) != len(texts2):
             raise ValueError("merge requires equal length lists for texts1 and texts2")
         if temperature is None:
-            temperature = self.config.get('temperature_merge', 0.7)
+            temperature = self.config['temperature_merge']
 
         preprompt = (
             "I will sligtly adjust text1 to be semantically closer to text2. "
@@ -249,7 +249,7 @@ class LLMService(LLMServiceInterface):
         logger.info(f"Merging {len(texts1)} pairs of texts...")
         results = self._generate_with_retry(
             prompts,
-            max_new_tokens=self.config.get('max_new_tokens', 100),
+            max_new_tokens=self.config['max_new_tokens'],
             temperature=temperature,
             stop_sequence=stop_sequence,
             validation_fn=validation_fn,
@@ -261,7 +261,7 @@ class LLMService(LLMServiceInterface):
 
     def score(self, texts: List[str], temperature: Optional[float] = None) -> List[Optional[float]]:
         if temperature is None:
-            temperature = self.config.get('temperature_score', 0.2)
+            temperature = self.config['temperature_score']
 
         max_score = 9 # The scale used in the prompt
         preprompt_virality = (

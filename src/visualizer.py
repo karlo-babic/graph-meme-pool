@@ -25,15 +25,14 @@ class Visualizer:
         self.embed_config = config['embeddings']
         self.vis_dir = Path(self.path_config['vis_dir'])
         # Consider loading the embedding model once here or receiving it
-        self.sentence_model = None
-        if self.vis_config.get('draw_semantic_diff_per_gen', False) or \
-           self.vis_config.get('draw_final_embs', False): # Load if any embedding plot is enabled
+        self.embedding_model = None
+        if self.vis_config['draw_semantic_diff_per_gen'] or \
+           self.vis_config['draw_final_embs']: # Load if any embedding plot is enabled
              try:
-                  # Using sentence transformer for both semantic diff and general embs now
-                  self.sentence_model = emb_utils.get_sentence_transformer_model(self.embed_config['sentence_model_path'])
+                  self.embedding_model = emb_utils.get_sentence_transformer_model(self.embed_config['model_path'])
              except Exception as e:
                   logger.error(f"Failed to load embedding model for visualization: {e}. Embedding plots will be skipped.")
-                  self.sentence_model = None
+                  self.embedding_model = None
 
 
     def _get_layout(self, G: nx.DiGraph, layout_type='kamada_kawai') -> Dict:
@@ -196,7 +195,7 @@ class Visualizer:
 
     def draw_embs(self):
         """Visualizes graph with layout based on semantic embeddings of current memes."""
-        if not self.sentence_model:
+        if not self.embedding_model:
              logger.warning("Skipping draw_embs: Embedding model not available.")
              return
 
@@ -221,7 +220,7 @@ class Visualizer:
                   node_id_map[i] = node_id
 
         # Calculate embeddings
-        embeddings_np = emb_utils.calculate_sentence_embeddings(texts, self.sentence_model)
+        embeddings_np = emb_utils.calculate_sentence_embeddings(texts, self.embedding_model)
         if embeddings_np.size == 0:
             logger.error("Failed to calculate embeddings for draw_embs. Skipping plot.")
             return
@@ -258,7 +257,7 @@ class Visualizer:
 
     def draw_semantic_difference(self, generation: int):
         """Visualizes semantic shift relative to two reference points."""
-        if not self.sentence_model:
+        if not self.embedding_model:
              logger.warning("Skipping draw_semantic_difference: Embedding model not available.")
              return
 
@@ -271,8 +270,8 @@ class Visualizer:
         reference_A = "The animal moved because its brain sent a signal to its muscles."
         reference_B = "The animal moved because it was carried by a flood."
         try:
-             embedding_A = emb_utils.calculate_sentence_embeddings([reference_A], self.sentence_model)[0]
-             embedding_B = emb_utils.calculate_sentence_embeddings([reference_B], self.sentence_model)[0]
+             embedding_A = emb_utils.calculate_sentence_embeddings([reference_A], self.embedding_model)[0]
+             embedding_B = emb_utils.calculate_sentence_embeddings([reference_B], self.embedding_model)[0]
         except Exception as e:
              logger.error(f"Failed to embed reference texts for semantic difference: {e}. Skipping plot.")
              return
@@ -296,7 +295,7 @@ class Visualizer:
              return
 
         # Batch embed current texts
-        current_embeddings = emb_utils.calculate_sentence_embeddings(current_texts, self.sentence_model)
+        current_embeddings = emb_utils.calculate_sentence_embeddings(current_texts, self.embedding_model)
         if current_embeddings.size == 0:
              logger.error(f"Failed to calculate embeddings for generation {generation} in semantic difference plot.")
              return

@@ -11,10 +11,10 @@ from visualizer import Visualizer
 
 # --- Logging Setup ---
 def setup_logging(config):
-    log_level_str = config['logging'].get('level', 'INFO').upper()
+    log_level_str = config['logging']['level'].upper()
     log_level = getattr(logging, log_level_str, logging.INFO)
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    log_file = config['paths'].get('log_file')
+    log_file = config['paths']['log_file']
 
     handlers = [logging.StreamHandler(sys.stdout)] # Always log to console
     if log_file:
@@ -37,12 +37,11 @@ if __name__ == "__main__":
     start_time = time.time()
 
     # Load Configuration
-    config = load_config("config.yaml") # Or pass path via args
+    config = load_config("config.yaml")
 
     # Setup Logging
     logger = setup_logging(config)
     logger.info("--- Starting Graph Meme Pool Simulation ---")
-    #logger.debug(f"Configuration loaded: {config}") # Can be very verbose
 
     # Initialize Components
     try:
@@ -79,15 +78,15 @@ if __name__ == "__main__":
     # --- Run Simulation ---
     try:
          # Initial visualization (optional)
-         if config['simulation'].get('initial_score', True):
+         if config['simulation']['initial_score']:
               logger.info("Performing initial scoring before simulation run...")
               evolution_engine.initialize_scores()
               # Visualize state *after* initial scoring
-              if config['visualization'].get('draw_score_per_gen', False):
+              if config['visualization']['draw_score_per_gen']:
                    visualizer.draw_score(generation=0) # Label as gen 0
-              if config['visualization'].get('draw_change_per_gen', False):
+              if config['visualization']['draw_change_per_gen']:
                    visualizer.draw_change(generation=0) # Label as gen 0
-              if config['visualization'].get('draw_semantic_diff_per_gen', False):
+              if config['visualization']['draw_semantic_diff_per_gen']:
                    visualizer.draw_semantic_difference(generation=0) # Label as gen 0
 
 
@@ -97,14 +96,13 @@ if __name__ == "__main__":
          for completed_generation_index in simulation_generator:
               logger.info(f"Completed Generation {completed_generation_index + 1}.")
               # Per-generation visualization calls controlled here
-              if config['visualization'].get('draw_score_per_gen', False):
+              if config['visualization']['draw_score_per_gen']:
                    visualizer.draw_score(generation=completed_generation_index + 1)
-              if config['visualization'].get('draw_change_per_gen', False):
+              if config['visualization']['draw_change_per_gen']:
                    visualizer.draw_change(generation=completed_generation_index + 1)
-              if config['visualization'].get('draw_semantic_diff_per_gen', False):
+              if config['visualization']['draw_semantic_diff_per_gen']:
                    visualizer.draw_semantic_difference(generation=completed_generation_index + 1)
 
-         logger.info("Simulation loop finished.")
 
     except Exception as e:
          logger.critical(f"Simulation failed during execution: {e}", exc_info=True)
@@ -119,10 +117,10 @@ if __name__ == "__main__":
     logger.info("Performing final actions...")
 
     # Final Visualizations
-    if config['visualization'].get('draw_final_embs', True):
+    if config['visualization']['draw_final_embs']:
         logger.info("Generating final embedding visualization...")
         visualizer.draw_embs()
-    if config['visualization'].get('plot_final_score_history', True):
+    if config['visualization']['plot_final_score_history']:
         logger.info("Generating final score history plot...")
         visualizer.plot_score_history_bygroup()
     # Add calls to other final visualizations if needed (e.g., final score/change plots)

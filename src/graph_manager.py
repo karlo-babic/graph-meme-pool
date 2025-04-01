@@ -3,7 +3,7 @@ import random
 import json
 import logging
 from pathlib import Path
-from typing import List, Any, Optional, Dict, Tuple
+from typing import List, Any, Optional, Dict
 from networkx.readwrite import json_graph
 
 from data_structures import MemeNodeData, PropagationEvent
@@ -17,9 +17,9 @@ class GraphManager:
         self.config = config
         self.graph = nx.DiGraph()
         self.propagation_history: List[PropagationEvent] = []
-        self.random_seed = config.get('seed', 1) # Store seed
+        self.random_seed = config['seed']
         random.seed(self.random_seed)
-        self.assignment_strategy = config.get('graph_generation', {}).get('initial_meme_assignment', 'structured')
+        self.assignment_strategy = config['graph_generation']['initial_meme_assignment']
         logger.info(f"Initial meme assignment strategy: '{self.assignment_strategy}'")
 
     def _load_initial_memes(self) -> List[str]:

@@ -5,7 +5,6 @@ import numpy as np # For checking NaN
 
 from graph_manager import GraphManager
 from llm_service import LLMServiceInterface
-from data_structures import MemeNodeData
 
 logger = logging.getLogger(__name__)
 
@@ -17,11 +16,10 @@ class EvolutionEngine:
         self.llm_service = llm_service
         self.config = config['simulation']
         self.llm_config = config['llm'] # For temperatures etc.
-        random.seed(config.get('seed', 1)) # Use same seed as GraphManager if provided
+        random.seed(config['seed'])
 
     def initialize_scores(self):
         """Scores the initial memes present in the graph if they haven't been scored."""
-        logger.info("Initializing meme scores...")
         all_nodes_data = self.graph_manager.get_all_nodes_data()
         memes_to_score: Set[str] = set()
         nodes_needing_score: Dict[str, List[Any]] = {} # meme -> list of node_ids
@@ -158,21 +156,6 @@ class EvolutionEngine:
 
             # Compare scores and decide action
             score_ratio = best_received_score / current_meme_score if current_meme_score > 0 else float('inf')
-
-            # action_type = "keep" # Default
-            # if best_received_score > current_meme_score: # Potential adopt/merge/mutate
-            #      if 1.0 <= score_ratio <= 1.0 + threshold: # Scores are close - merge
-            #           action_type = "merge"
-            #           merge_candidates.append((current_meme, best_received_meme))
-            #           nodes_to_merge.append(node_id)
-            #      elif score_ratio > 1.0 + threshold: # Received is significantly better - mutate it
-            #           action_type = "mutate"
-            #           mutation_candidates.append(best_received_meme) # Mutate the *better* meme
-            #           nodes_to_mutate.append(node_id)
-            #      # else: score difference too small, treat as keep (already handled by default)
-            # else: # Received is worse or equal, keep current
-            #      action_type = "keep"
-            #      # No need to add to nodes_to_keep explicitly yet, handle later
                 
             if 1 - threshold <= score_ratio <= 1 + threshold:
                 action_type = "merge"
@@ -269,62 +252,93 @@ class EvolutionEngine:
         logger.debug(f"Generation {generation}: Finished processing memes.")
 
 
-    def _check_convergence_or_mutate_all(self, generation: int) -> bool:
-        """Checks if all memes are identical. If so, mutates all."""
+    def _mutate_initial_if_all_same(self):
+        """
+        Checks if all memes are identical at the start. If so, mutates all.
+        This should be called once before the main simulation loop begins.
+        Updates the initial state (history[0], history_scores[0], current).
+        """
+        logger.info("Checking initial meme state for uniformity...")
         nodes_data = self.graph_manager.get_all_nodes_data()
         if not nodes_data:
-             return False # Empty graph
+             logger.info("Graph is empty, skipping initial mutation check.")
+             return False # Nothing to do
 
-        first_meme = next(iter(nodes_data.values())).current_meme
+        # Use an iterator to get the first item without loading all keys/values if not needed
+        try:
+            first_node_data = next(iter(nodes_data.values()))
+            first_meme = first_node_data.current_meme
+        except StopIteration:
+             logger.info("Graph has no nodes with data, skipping initial mutation check.")
+             return False # No data found
+
         all_same = all(data.current_meme == first_meme for data in nodes_data.values())
 
         if all_same:
-            logger.info(f"Generation {generation}: All nodes have the same meme ('{first_meme[:50]}...'). Applying mutation to all.")
+            logger.info(f"All initial nodes have the same meme ('{first_meme[:50]}...'). Applying mutation to all.")
             all_node_ids = list(nodes_data.keys())
-            current_memes = [first_meme] * len(all_node_ids)
+            current_memes = [first_meme] * len(all_node_ids) # List of the same initial meme
 
+            # Mutate and score the initial meme variants
             mutated_memes = self.llm_service.mutate(current_memes, temperature=self.llm_config['temperature_mutate'])
             new_scores = self.llm_service.score(mutated_memes, temperature=self.llm_config['temperature_score'])
 
+            mutation_applied_count = 0
             for i, node_id in enumerate(all_node_ids):
                  new_meme = mutated_memes[i]
                  new_score = new_scores[i]
-                 if new_meme != "[GENERATION FAILED]" and new_score is not None:
-                      self.graph_manager.update_node_meme(node_id, new_meme, new_score, generation)
-                 else:
-                      logger.warning(f"Node {node_id}: Failed mutation/scoring during 'mutate all'. Keeping original meme.")
-                      # Ensure history reflects the attempt failed by keeping old one
-                      original_data = self.graph_manager.get_node_data(node_id)
-                      self.graph_manager.update_node_meme(node_id, original_data.current_meme, original_data.current_meme_score, generation)
 
+                 # Get the specific node data object to update directly
+                 node_data = self.graph_manager.get_node_data(node_id)
+                 if not node_data:
+                      logger.warning(f"Node {node_id}: Could not retrieve data during initial mutation. Skipping update.")
+                      continue
+
+                 # Apply update only if mutation and scoring succeeded
+                 if new_meme != first_meme and new_meme != "" and new_score is not None: # Check if mutation is valid and score exists
+                      # --- Direct Update of Initial State ---
+                      node_data.current_meme = new_meme
+                      node_data.current_meme_score = new_score
+                      # Replace the first entry in history/scores
+                      if node_data.history:
+                           node_data.history[0] = new_meme
+                      else: # Should not happen if MemeNodeData initializes correctly
+                           node_data.history = [new_meme]
+
+                      if node_data.history_scores:
+                           # Ensure history_scores is long enough (might happen if init score was off)
+                           if len(node_data.history_scores) == 0:
+                                node_data.history_scores = [new_score]
+                           else:
+                                node_data.history_scores[0] = new_score
+                      else:
+                           node_data.history_scores = [new_score]
+                      # --- End Direct Update ---
+                      mutation_applied_count +=1
+                      logger.debug(f"Node {node_id}: Initial meme mutated to '{new_meme[:30]}...' (Score: {new_score:.3f})")
+
+                 else: # Mutation/scoring failed or returned original/empty
+                      logger.warning(f"Node {node_id}: Failed mutation/scoring during initial 'mutate all' or meme unchanged. Keeping original initial meme.")
+                      # Ensure current score matches initial score history if it exists
+                      if node_data.history_scores and node_data.history_scores[0] is not None:
+                           node_data.current_meme_score = node_data.history_scores[0]
+                      # No need to call update_node_meme, state is already correct
+
+            logger.info(f"Applied initial mutation to {mutation_applied_count}/{len(all_node_ids)} nodes.")
             return True # Indicates mutation occurred
-        return False
+        else:
+            logger.info("Initial memes are diverse. No initial mutation applied.")
+            return False # Indicates no mutation occurred
 
 
     def step(self, generation: int) -> int:
         """Performs one full generation step: propagate, process."""
-        logger.info(f"--- Starting Generation {generation + 1} ---")
+        logger.info(f"--- Starting Generation {generation} ---")
+        
+        self._propagate_memes(generation)
+        self._process_received_memes(generation)
 
-        # Check for convergence/stagnation first
-        mutated_all = self._check_convergence_or_mutate_all(generation)
-
-        if not mutated_all:
-            self._propagate_memes(generation)
-            self._process_received_memes(generation)
-        else:
-             logger.info(f"Skipping standard propagation/processing for Gen {generation+1} due to 'mutate all'.")
-             # Need to clear received memes if any existed before mutate_all check? Unlikely but possible.
-             self.graph_manager.clear_received_memes()
-
-
-        # Log current state summary (optional)
-        # nodes_data = self.graph_manager.get_all_nodes_data()
-        # unique_memes = set(d.current_meme for d in nodes_data.values())
-        # avg_score = np.nanmean([d.current_meme_score for d in nodes_data.values() if d.current_meme_score is not None])
-        # logger.info(f"--- End Generation {generation + 1} --- Unique Memes: {len(unique_memes)}, Avg Score: {avg_score:.3f}")
-
-        # Return generation number (could add flags later)
-        return generation + 1
+        logger.info(f"--- Finished Generation {generation} ---")
 
 
     def run_simulation(self) -> int:
@@ -332,18 +346,24 @@ class EvolutionEngine:
         num_generations = self.config['generations']
         logger.info(f"Starting simulation for {num_generations} generations.")
 
+        # Check and potentially mutate initial uniform state
+        self._mutate_initial_if_all_same()
+
+        # --- Main Evolution Loop ---
         last_completed_generation = -1
+        logger.info("Starting main evolution loop...")
         for gen in range(num_generations):
             try:
-                completed_gen = self.step(gen)
-                last_completed_generation = completed_gen -1 # gen index
-                # Yield or callback here if needed for per-generation actions in main.py
-                yield last_completed_generation # Yield the index of the completed generation
+                self.step(gen)
+                last_completed_generation = gen
+
+                # Yield the index of the completed generation for external processing (like visualization)
+                yield last_completed_generation
+
             except Exception as e:
                 logger.error(f"Error during generation {gen + 1}: {e}", exc_info=True)
-                # Decide whether to stop or continue
                 logger.warning("Simulation stopped due to error.")
                 break # Stop simulation on error
 
         logger.info(f"Simulation finished after {last_completed_generation + 1} completed generations.")
-        return last_completed_generation + 1 # Return number of completed generations
+        return last_completed_generation + 1  # Return number of completed generations
