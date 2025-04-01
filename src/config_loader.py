@@ -18,10 +18,12 @@ DEFAULT_CONFIG = {
     'simulation': {
         'generations': 50,
         'threshold': 0.2,
-        'initial_score': True
+        'initial_score': True,
+        'fitness_model': 'llm',
+        'fitness_model_huggingpath': ''
     },
     'llm': {
-        'model_huggingpath': "microsoft/Phi-3-mini-4k-instruct",
+        'huggingpath': "microsoft/Phi-3-mini-4k-instruct",
         'temperature_mutate': 0.5,
         'temperature_merge': 0.5,
         'temperature_score': 0.2,

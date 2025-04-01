@@ -64,7 +64,7 @@ class LLMService(LLMServiceInterface):
 
     def __init__(self, config: Dict):
         self.config = config['llm']
-        self.model_huggingpath = self.config['model_huggingpath']
+        self.huggingpath = self.config['huggingpath']
         self.model: Optional[AutoModelForCausalLM] = None
         self.tokenizer: Optional[AutoTokenizer] = None
         self.text_generator: Optional[Pipeline] = None
@@ -76,10 +76,10 @@ class LLMService(LLMServiceInterface):
             logger.info("Model already loaded.")
             return
 
-        logger.info(f"Loading LLM model: {self.model_huggingpath}")
+        logger.info(f"Loading LLM model: {self.huggingpath}")
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(self.model_huggingpath)
-            self.model = AutoModelForCausalLM.from_pretrained(self.model_huggingpath)
+            self.tokenizer = AutoTokenizer.from_pretrained(self.huggingpath)
+            self.model = AutoModelForCausalLM.from_pretrained(self.huggingpath)
             # Ensure pad_token_id is set if tokenizer doesn't have one (common with some models like Phi-3)
             if self.tokenizer.pad_token_id is None:
                  self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -91,9 +91,9 @@ class LLMService(LLMServiceInterface):
                 tokenizer=self.tokenizer,
                 device=self.device
             )
-            logger.info(f"Model {self.model_huggingpath} loaded successfully on device {self.device}.")
+            logger.info(f"Model {self.huggingpath} loaded successfully on device {self.device}.")
         except Exception as e:
-            logger.error(f"Failed to load model {self.model_huggingpath}: {e}")
+            logger.error(f"Failed to load model {self.huggingpath}: {e}")
             raise RuntimeError(f"LLM loading failed: {e}") from e
             sys.exit(1)
 

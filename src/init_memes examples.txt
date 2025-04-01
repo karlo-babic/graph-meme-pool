@@ -1,5 +1,16 @@
+## STATEMENT ##########################################################
+
 Change is necessary for growth.
 Stability is the key to success.
+
+
+## SENTIMENT ##########################################################
+
+Star Wars is the worst science fiction movie.
+Star Wars is the best space opera movie.
+
+
+## EXPLANATION ########################################################
 
 The ice melted because it was exposed to sunlight.
 The ice melted because salt was added.

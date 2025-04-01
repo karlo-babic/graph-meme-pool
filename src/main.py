@@ -8,6 +8,7 @@ from graph_manager import GraphManager
 from llm_service import LLMService
 from evolution_engine import EvolutionEngine
 from visualizer import Visualizer
+from fitness_model import FitnessModel
 
 # --- Logging Setup ---
 def setup_logging(config):
@@ -18,7 +19,16 @@ def setup_logging(config):
 
     handlers = [logging.StreamHandler(sys.stdout)] # Always log to console
     if log_file:
+        # Ensure log directory exists if log_file path includes directories
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
         handlers.append(logging.FileHandler(log_file, mode='w')) # Overwrite log file each run
+
+    # Remove existing handlers before adding new ones
+    # (Prevents duplicate logs if script is run multiple times in the same session/notebook)
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
 
     logging.basicConfig(level=log_level, format=log_format, handlers=handlers)
 
@@ -27,31 +37,73 @@ def setup_logging(config):
     logging.getLogger("PIL").setLevel(logging.WARNING)
     logging.getLogger("huggingface_hub").setLevel(logging.WARNING)
     logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+    # Suppress transformers info unless logging level is DEBUG
+    if log_level > logging.DEBUG:
+        logging.getLogger("transformers").setLevel(logging.WARNING)
+
 
     logger = logging.getLogger(__name__)
     logger.info("Logging setup complete.")
     return logger
+
 
 # --- Main Execution ---
 if __name__ == "__main__":
     start_time = time.time()
 
     # Load Configuration
-    config = load_config("config.yaml")
+    config = load_config("config.yaml") # Use default name
 
     # Setup Logging
     logger = setup_logging(config)
     logger.info("--- Starting Graph Meme Pool Simulation ---")
+    logger.info(f"Configuration loaded from: config.yaml (or defaults)")
 
-    # Initialize Components
+    # --- Initialize Components ---
+    graph_manager = None
+    llm_service = None
+    fitness_model_instance = None # Initialize as None
+    evolution_engine = None
+    visualizer = None
+
     try:
         graph_manager = GraphManager(config)
-        llm_service = LLMService(config)
-        # Load LLM model early (can take time)
-        llm_service.load()
 
-        evolution_engine = EvolutionEngine(graph_manager, llm_service, config)
+        # Always load LLM Service (needed for mutate/merge)
+        logger.info("Initializing LLM Service...")
+        llm_service = LLMService(config)
+        llm_service.load() # Load LLM model early
+
+        # Conditionally load Fitness Model
+        fitness_model_type = config.get('simulation', {}).get('fitness_model', 'llm').lower()
+        logger.info(f"Fitness model type selected: '{fitness_model_type}'")
+
+        if fitness_model_type == 'custom':
+            model_path = config['simulation']['fitness_model_huggingpath']
+            if model_path:
+                logger.info(f"Initializing Fitness Model from path: {model_path}")
+                try:
+                    fitness_model_instance = FitnessModel(model_huggingpath=model_path)
+                    fitness_model_instance.load() # Load the fitness model
+                except Exception as fm_error:
+                    logger.error(f"Failed to load Fitness Model: {fm_error}. Simulation may proceed using only LLM for scoring if possible, or fail.", exc_info=True)
+                    sys.exit(1)
+            else:
+                logger.error("Fitness model type is 'custom' but 'simulation.fitness_model_huggingpath' is not set in config. Cannot load fitness model.")
+                # sys.exit(1)
+
+
+        # --- Pass BOTH services (or None for fitness_model) to EvolutionEngine ---
+        logger.info("Initializing Evolution Engine...")
+        evolution_engine = EvolutionEngine(
+            graph_manager=graph_manager,
+            llm_service=llm_service,
+            config=config,
+            fitness_model=fitness_model_instance # Pass the instance (or None)
+        )
+
         # Visualizer loads embedding models internally if needed
+        logger.info("Initializing Visualizer...")
         visualizer = Visualizer(graph_manager, config)
 
     except Exception as e:
@@ -80,14 +132,18 @@ if __name__ == "__main__":
          # Initial visualization (optional)
          if config['simulation']['initial_score']:
               logger.info("Performing initial scoring before simulation run...")
-              evolution_engine.initialize_scores()
+              evolution_engine.initialize_scores() # Uses configured scoring method
               # Visualize state *after* initial scoring
-              if config['visualization']['draw_score_per_gen']:
-                   visualizer.draw_score(generation=0) # Label as gen 0
-              if config['visualization']['draw_change_per_gen']:
-                   visualizer.draw_change(generation=0) # Label as gen 0
-              if config['visualization']['draw_semantic_diff_per_gen']:
-                   visualizer.draw_semantic_difference(generation=0) # Label as gen 0
+              # Check if visualizer was successfully initialized
+              if visualizer:
+                   if config['visualization']['draw_score_per_gen']:
+                        visualizer.draw_score(generation=0) # Label as gen 0
+                   if config['visualization']['draw_change_per_gen']:
+                        visualizer.draw_change(generation=0) # Label as gen 0
+                   if config['visualization']['draw_semantic_diff_per_gen']:
+                        visualizer.draw_semantic_difference(generation=0) # Label as gen 0
+              else:
+                  logger.warning("Visualizer not initialized, skipping initial visualizations.")
 
 
          logger.info("Starting evolution loop...")
@@ -95,20 +151,27 @@ if __name__ == "__main__":
 
          for completed_generation_index in simulation_generator:
               # Per-generation visualization calls controlled here
-              if config['visualization']['draw_score_per_gen']:
-                   visualizer.draw_score(generation=completed_generation_index + 1)
-              if config['visualization']['draw_change_per_gen']:
-                   visualizer.draw_change(generation=completed_generation_index + 1)
-              if config['visualization']['draw_semantic_diff_per_gen']:
-                   visualizer.draw_semantic_difference(generation=completed_generation_index + 1)
+              if visualizer: # Check again in case initialization failed
+                   generation_num_for_vis = completed_generation_index + 1
+                   if config['visualization']['draw_score_per_gen']:
+                        visualizer.draw_score(generation=generation_num_for_vis)
+                   if config['visualization']['draw_change_per_gen']:
+                        # Draw change might need history, pass lookback parameter if needed
+                        visualizer.draw_change(generation=generation_num_for_vis, history_lookback=4) # Example lookback
+                   if config['visualization']['draw_semantic_diff_per_gen']:
+                        visualizer.draw_semantic_difference(generation=generation_num_for_vis)
 
 
     except Exception as e:
          logger.critical(f"Simulation failed during execution: {e}", exc_info=True)
          # Save state even if simulation fails mid-way?
-         logger.info("Attempting to save graph state after error...")
-         graph_manager.save_graph(graph_base_name + "_error_state")
-         graph_manager.save_propagation_history(graph_base_name + "_error_state_propagation")
+         if graph_manager:
+             logger.info("Attempting to save graph state after error...")
+             try:
+                 graph_manager.save_graph(graph_base_name + "_error_state")
+                 graph_manager.save_propagation_history(graph_base_name + "_error_state_propagation")
+             except Exception as save_err:
+                 logger.error(f"Could not save error state: {save_err}")
          sys.exit(1)
 
 
@@ -116,21 +179,27 @@ if __name__ == "__main__":
     logger.info("Performing final actions...")
 
     # Final Visualizations
-    if config['visualization']['draw_final_embs']:
-        logger.info("Generating final embedding visualization...")
-        visualizer.draw_embs()
-    if config['visualization']['plot_final_score_history']:
-        logger.info("Generating final score history plot...")
-        visualizer.plot_score_history_bygroup()
-    # Add calls to other final visualizations if needed (e.g., final score/change plots)
-    # visualizer.draw_score() # Final score plot without generation number
-    # visualizer.draw_change(generation=config['simulation']['generations'], history_lookback=10) # Final change plot
-
+    if visualizer: # Check if initialized
+        if config['visualization']['draw_final_embs']:
+            logger.info("Generating final embedding visualization...")
+            visualizer.draw_embs()
+        if config['visualization']['plot_final_score_history']:
+            logger.info("Generating final score history plot...")
+            visualizer.plot_score_history_bygroup()
+        # Add calls to other final visualizations if needed
+        # visualizer.draw_score() # Final score plot without generation number
+        # visualizer.draw_change(generation=evolution_engine.config['generations'], history_lookback=10) # Final change plot
+    else:
+        logger.warning("Visualizer not initialized, skipping final visualizations.")
 
     # Save Final Graph State and History
-    logger.info("Saving final graph state and propagation history...")
-    graph_manager.save_graph(graph_base_name)
-    graph_manager.save_propagation_history() # Saves with default naming convention
+    if graph_manager: # Check if initialized
+        logger.info("Saving final graph state and propagation history...")
+        try:
+            graph_manager.save_graph(graph_base_name)
+            graph_manager.save_propagation_history() # Saves with default naming convention
+        except Exception as final_save_err:
+            logger.error(f"Failed to save final graph state/history: {final_save_err}")
 
     end_time = time.time()
     total_time = end_time - start_time

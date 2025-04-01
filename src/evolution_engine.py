@@ -5,50 +5,101 @@ import numpy as np # For checking NaN
 
 from graph_manager import GraphManager
 from llm_service import LLMServiceInterface
+from fitness_model import FitnessModel
 
 logger = logging.getLogger(__name__)
 
 class EvolutionEngine:
     """Orchestrates the meme evolution process over generations."""
 
-    def __init__(self, graph_manager: GraphManager, llm_service: LLMServiceInterface, config: Dict):
+    def __init__(self,
+                 graph_manager: GraphManager,
+                 llm_service: LLMServiceInterface,
+                 config: Dict,
+                 fitness_model: Optional[FitnessModel] = None):
         self.graph_manager = graph_manager
         self.llm_service = llm_service
+        self.fitness_model = fitness_model # Store the fitness model instance
         self.config = config['simulation']
-        self.llm_config = config['llm'] # For temperatures etc.
+        self.llm_config = config['llm'] # For LLM-specific parameters
+        self.fitness_model_type = self.config.get('fitness_model', 'llm').lower() # Store for easy access
         random.seed(config['seed'])
 
+        # Validation
+        if self.fitness_model_type == 'custom' and not self.fitness_model:
+             logger.warning("EvolutionEngine initialized for 'custom' fitness type, but no FitnessModel instance provided. Scoring will likely fail.")
+        elif self.fitness_model_type == 'llm' and not self.llm_service:
+             logger.critical("EvolutionEngine initialized for 'llm' fitness type, but no LLMService instance provided. Scoring will fail.")
+             raise ValueError("LLMService instance is required for 'llm' fitness model type.")
+        elif self.fitness_model_type not in ['llm', 'custom']:
+             logger.error(f"Unknown fitness_model type '{self.fitness_model_type}' in config. Defaulting to 'llm'.")
+             self.fitness_model_type = 'llm'
+
+    def _score_memes(self, memes: List[str]) -> List[Optional[float]]:
+        """Scores memes using the method specified in the config, handling uniqueness."""
+        if not memes:
+            return []
+
+        unique_memes = list(dict.fromkeys(memes)) # Maintain order while getting uniques
+        unique_scores = {}
+
+        if self.fitness_model_type == 'custom':
+            if self.fitness_model:
+                logger.debug(f"Scoring {len(unique_memes)} unique memes using FitnessModel.")
+                scores_list = self.fitness_model.score(unique_memes)
+                unique_scores = {meme: score for meme, score in zip(unique_memes, scores_list)}
+            else:
+                logger.error("FitnessModel ('custom') selected but not available. Returning None scores.")
+                unique_scores = {meme: None for meme in unique_memes}
+        elif self.fitness_model_type == 'llm':
+            if self.llm_service:
+                 logger.debug(f"Scoring {len(unique_memes)} unique memes using LLM.")
+                 scores_list = self.llm_service.score(unique_memes, temperature=self.llm_config['temperature_score'])
+                 unique_scores = {meme: score for meme, score in zip(unique_memes, scores_list)}
+            else:
+                logger.error("LLMService ('llm') selected but not available. Returning None scores.")
+                unique_scores = {meme: None for meme in unique_memes}
+        else:
+            logger.error(f"Invalid fitness_model type '{self.fitness_model_type}' during scoring.")
+            unique_scores = {meme: None for meme in unique_memes}
+
+        # Map scores back to the original list
+        final_scores = [unique_scores.get(meme) for meme in memes]
+        return final_scores
+    
+
     def initialize_scores(self):
-        """Scores the initial memes present in the graph if they haven't been scored."""
+        """Scores the initial memes present in the graph if they haven't been scored, using the configured fitness model."""
         all_nodes_data = self.graph_manager.get_all_nodes_data()
         memes_to_score: Set[str] = set()
         nodes_needing_score: Dict[str, List[Any]] = {} # meme -> list of node_ids
 
         for node_id, data in all_nodes_data.items():
-            if data.current_meme_score is None:
+             # Check if score is None or NaN
+            if data.current_meme_score is None or np.isnan(data.current_meme_score):
                 memes_to_score.add(data.current_meme)
                 if data.current_meme not in nodes_needing_score:
                     nodes_needing_score[data.current_meme] = []
                 nodes_needing_score[data.current_meme].append(node_id)
 
         if not memes_to_score:
-            logger.info("All initial memes already have scores.")
+            logger.info("All initial memes already have valid scores.")
             return
 
-        logger.info(f"Found {len(memes_to_score)} unique initial memes needing scores.")
+        logger.info(f"Found {len(memes_to_score)} unique initial memes needing scores (using '{self.fitness_model_type}' model).")
         meme_list = list(memes_to_score)
-        scores = self.llm_service.score(meme_list, temperature=self.llm_config['temperature_score'])
+        scores = self._score_memes(meme_list)
 
-        # Apply scores back to nodes
-        for meme, score in zip(meme_list, scores):
+        score_map = {meme: score for meme, score in zip(meme_list, scores)}
+
+        for meme, score in score_map.items():
             if score is not None:
-                for node_id in nodes_needing_score[meme]:
-                    # Update current score and the initial entry in history_scores
-                    self.graph_manager.update_node_score(node_id, score, history_index=0)
-                    # Also set the current_meme_score directly for consistency
-                    node_data = self.graph_manager.get_node_data(node_id)
-                    if node_data:
-                         node_data.current_meme_score = score
+                if meme in nodes_needing_score:
+                    for node_id in nodes_needing_score[meme]:
+                        self.graph_manager.update_node_score(node_id, score, history_index=0)
+                        node_data = self.graph_manager.get_node_data(node_id)
+                        if node_data:
+                             node_data.current_meme_score = score
             else:
                 logger.warning(f"Failed to get score for initial meme: '{meme[:50]}...'")
 
@@ -76,73 +127,68 @@ class EvolutionEngine:
 
         logger.debug(f"Generation {generation}: {propagated_count} meme propagations occurred.")
 
-
+    
     def _process_received_memes(self, generation: int):
         """Nodes process received memes: score, compare, merge/mutate, update."""
-        logger.debug(f"Generation {generation}: Processing received memes...")
+        logger.debug(f"Generation {generation}: Processing received memes using '{self.fitness_model_type}' scores...")
         nodes_data = self.graph_manager.get_all_nodes_data()
         threshold = self.config['threshold']
-        mutation_candidates: List[str] = [] # Memes to potentially mutate (best received > current)
-        merge_candidates: List[Tuple[str, str]] = [] # Pairs to merge (current, best_received)
-        nodes_to_mutate: List[Any] = [] # node_ids corresponding to mutation_candidates
-        nodes_to_merge: List[Any] = [] # node_ids corresponding to merge_candidates
-        nodes_to_keep: List[Any] = [] # node_ids that decided to keep their current meme
-        all_memes_in_play: Set[str] = set() # Track all memes (current, received) for scoring
-        meme_score_cache: Dict[str, Optional[float]] = {} # Cache scores for this generation
+        mutation_candidates: List[str] = []
+        merge_candidates: List[Tuple[str, str]] = []
+        nodes_to_mutate: List[Any] = []
+        nodes_to_merge: List[Any] = []
 
-        # Collect all memes and check existing scores
+        all_memes_in_play: Set[str] = set()
+        meme_score_cache: Dict[str, Optional[float]] = {}
+
+        # Collect memes and populate initial cache from existing node scores
         for node_id, data in nodes_data.items():
             all_memes_in_play.add(data.current_meme)
-            if data.current_meme_score is not None:
-                 meme_score_cache[data.current_meme] = data.current_meme_score
-                 # Ensure history score is aligned if possible
-                 if len(data.history_scores) == len(data.history):
-                     if data.history_scores[-1] is None or np.isnan(data.history_scores[-1]):
-                          self.graph_manager.update_node_score(node_id, data.current_meme_score, history_index=-1)
-                 elif len(data.history_scores) < len(data.history):
-                     # Pad and update if history grew but score wasn't recorded
-                     padding = [None] * (len(data.history) - 1 - len(data.history_scores))
+            if data.current_meme_score is not None and not np.isnan(data.current_meme_score):
+                meme_score_cache[data.current_meme] = data.current_meme_score
+                # Ensure history score alignment
+                if len(data.history_scores) == len(data.history):
+                    if data.history_scores[-1] is None or np.isnan(data.history_scores[-1]):
+                         self.graph_manager.update_node_score(node_id, data.current_meme_score, history_index=-1)
+                elif len(data.history_scores) < len(data.history):
+                     padding = [np.nan] * (len(data.history) - 1 - len(data.history_scores)) # Use NaN for padding
                      data.history_scores.extend(padding)
                      data.history_scores.append(data.current_meme_score)
 
-
             for meme, weight in data.received_memes:
                 all_memes_in_play.add(meme)
-                # We'll score all unscored memes in batch later
 
-        # Batch score any memes lacking a score in the cache
-        memes_needing_score = [meme for meme in all_memes_in_play if meme not in meme_score_cache]
+        # Score any memes not already in the cache
+        memes_needing_score = list(all_memes_in_play - set(meme_score_cache.keys()))
         if memes_needing_score:
-            logger.info(f"Generation {generation}: Scoring {len(memes_needing_score)} new or unscored memes.")
-            new_scores = self.llm_service.score(memes_needing_score, temperature=self.llm_config['temperature_score'])
+            logger.info(f"Generation {generation}: Scoring {len(memes_needing_score)} unique memes.")
+            new_scores = self._score_memes(memes_needing_score)
             for meme, score in zip(memes_needing_score, new_scores):
-                if score is None:
-                     logger.warning(f"Generation {generation}: Failed to score meme '{meme[:50]}...'. It cannot be adopted.")
-                meme_score_cache[meme] = score # Store None if scoring failed
+                if score is None or np.isnan(score):
+                     logger.warning(f"Generation {generation}: Failed to get valid score for meme '{meme[:50]}...'. It cannot be adopted.")
+                     meme_score_cache[meme] = None
+                else:
+                    meme_score_cache[meme] = score
+            logger.debug(f"Score cache updated. Size: {len(meme_score_cache)}")
+        else:
+             logger.debug(f"Generation {generation}: No new memes required scoring.")
 
-        # Decide actions for each node
-        updates_pending: Dict[Any, Tuple[str, Optional[float], str]] = {} # node_id -> (new_meme, new_score, action_type)
+        # Decide actions for each node based on cached scores
+        updates_pending: Dict[Any, Dict[str, Any]] = {} # node_id -> {action: 'keep'|'mutate'|'merge', meme1: str, meme2: Optional[str]}
 
         for node_id, data in nodes_data.items():
             if not data.received_memes:
-                # No change, just ensure history/score is consistent for next round
-                current_score = meme_score_cache.get(data.current_meme)
-                self.graph_manager.update_node_meme(node_id, data.current_meme, current_score, generation) # Effectively appends same meme/score
                 continue
 
             current_meme = data.current_meme
             current_meme_score = meme_score_cache.get(current_meme)
 
             if current_meme_score is None:
-                 logger.warning(f"Node {node_id}: Current meme '{current_meme[:50]}...' has no score. Cannot compare. Keeping current meme.")
-                 self.graph_manager.update_node_meme(node_id, current_meme, None, generation)
-                 continue # Cannot proceed without current score
+                 logger.warning(f"Node {node_id}: Current meme '{current_meme[:50]}...' has no valid score in cache. Keeping current meme.")
+                 continue
 
-            # Find the best received meme (highest score, ignore weighting for now, or use weighted score?)
-            # Let's use highest score among received, ignoring None scores
             best_received_meme: Optional[str] = None
             best_received_score: float = -1.0
-
             for meme, weight in data.received_memes:
                 score = meme_score_cache.get(meme)
                 if score is not None and score > best_received_score:
@@ -150,101 +196,106 @@ class EvolutionEngine:
                     best_received_score = score
 
             if best_received_meme is None:
-                 # No valid scored memes received
-                 self.graph_manager.update_node_meme(node_id, current_meme, current_meme_score, generation)
                  continue
 
-            # Compare scores and decide action
-            score_ratio = best_received_score / current_meme_score if current_meme_score > 0 else float('inf')
-                
+            # Use a small epsilon for division to prevent errors with zero scores
+            score_ratio = best_received_score / (current_meme_score + 1e-9)
+
+            action_type = "keep"
             if 1 - threshold <= score_ratio <= 1 + threshold:
                 action_type = "merge"
                 merge_candidates.append((current_meme, best_received_meme))
                 nodes_to_merge.append(node_id)
             elif score_ratio > 1 + threshold:
                 action_type = "mutate"
-                mutation_candidates.append(best_received_meme) # Mutate the *better* meme
+                mutation_candidates.append(best_received_meme) # Mutate the better meme
                 nodes_to_mutate.append(node_id)
-            elif score_ratio < 1 - threshold:
-                action_type = "keep"
 
-            # Store preliminary decision - actual meme/score depends on LLM results
             if action_type != "keep":
-                 updates_pending[node_id] = (None, None, action_type) # Placeholder for meme/score
-            else:
-                 # If keeping, lock it in now
-                 self.graph_manager.update_node_meme(node_id, current_meme, current_meme_score, generation)
+                updates_pending[node_id] = {
+                    "action": action_type,
+                    "current_meme": current_meme,
+                    "received_meme": best_received_meme
+                 }
 
-
-        # Batch process LLM operations
-        mutated_memes: List[str] = []
-        merged_memes: List[str] = []
+        # Perform LLM mutations and merges
+        mutated_memes_map: Dict[str, str] = {}
+        merged_memes_map: Dict[Tuple[str, str], str] = {}
 
         if mutation_candidates:
-            logger.info(f"Generation {generation}: Mutating {len(mutation_candidates)} memes.")
-            mutated_memes = self.llm_service.mutate(mutation_candidates, temperature=self.llm_config['temperature_mutate'])
+            unique_mutation_candidates = list(dict.fromkeys(mutation_candidates))
+            logger.info(f"Generation {generation}: Mutating {len(unique_mutation_candidates)} unique memes using LLM.")
+            mutated_results = self.llm_service.mutate(unique_mutation_candidates, temperature=self.llm_config['temperature_mutate'])
+            mutated_memes_map = {orig: mutated for orig, mutated in zip(unique_mutation_candidates, mutated_results)}
 
         if merge_candidates:
-             logger.info(f"Generation {generation}: Merging {len(merge_candidates)} pairs.")
-             merged_memes = self.llm_service.merge(
-                 [p[0] for p in merge_candidates],
-                 [p[1] for p in merge_candidates],
+             unique_merge_candidates = list(dict.fromkeys(merge_candidates))
+             logger.info(f"Generation {generation}: Merging {len(unique_merge_candidates)} unique pairs using LLM.")
+             merged_results = self.llm_service.merge(
+                 [p[0] for p in unique_merge_candidates],
+                 [p[1] for p in unique_merge_candidates],
                  temperature=self.llm_config['temperature_merge']
              )
+             merged_memes_map = {pair: merged for pair, merged in zip(unique_merge_candidates, merged_results)}
 
-        # Score the newly generated memes
-        all_new_memes = mutated_memes + merged_memes
-        new_meme_scores: List[Optional[float]] = []
-        if all_new_memes:
-            logger.info(f"Generation {generation}: Scoring {len(all_new_memes)} newly generated memes.")
-            new_meme_scores = self.llm_service.score(all_new_memes, temperature=self.llm_config['temperature_score'])
+        # Score the actually generated new memes
+        all_generated_memes = list(mutated_memes_map.values()) + list(merged_memes_map.values())
+        unique_generated_memes = list(dict.fromkeys(filter(None, all_generated_memes)))
+
+        new_meme_score_map: Dict[str, Optional[float]] = {}
+        if unique_generated_memes:
+            logger.info(f"Generation {generation}: Scoring {len(unique_generated_memes)} newly generated unique memes using '{self.fitness_model_type}' model.")
+            new_scores = self._score_memes(unique_generated_memes)
+            new_meme_score_map = {meme: score for meme, score in zip(unique_generated_memes, new_scores)}
         else:
-             logger.debug(f"Generation {generation}: No new memes generated via mutate/merge.")
+             logger.debug(f"Generation {generation}: No valid new memes generated via mutate/merge.")
 
+        # Apply updates to nodes
+        for node_id in self.graph_manager.get_all_node_ids():
+            original_node_data = nodes_data[node_id]
+            current_meme = original_node_data.current_meme
+            current_score = meme_score_cache.get(current_meme)
 
-        # Apply updates back to the graph
-        mutate_idx, merge_idx, score_idx = 0, 0, 0
-        for node_id, (pending_meme, pending_score, action_type) in updates_pending.items():
-            final_meme: Optional[str] = None
-            final_score: Optional[float] = None
-            original_node_data = nodes_data[node_id] # Get original data for comparison
+            final_meme = current_meme
+            final_score = current_score
+            action_taken = "keep"
 
-            if action_type == "mutate":
-                if mutate_idx < len(mutated_memes) and score_idx < len(new_meme_scores):
-                    final_meme = mutated_memes[mutate_idx]
-                    final_score = new_meme_scores[score_idx]
-                    mutate_idx += 1
-                    score_idx += 1
+            if node_id in updates_pending:
+                pending_action = updates_pending[node_id]["action"]
+                received_meme = updates_pending[node_id]["received_meme"]
+
+                new_meme_text: Optional[str] = None
+                if pending_action == "mutate":
+                    new_meme_text = mutated_memes_map.get(received_meme)
+                elif pending_action == "merge":
+                    merge_key = (current_meme, received_meme)
+                    new_meme_text = merged_memes_map.get(merge_key)
+
+                if new_meme_text and new_meme_text != current_meme:
+                    new_score = new_meme_score_map.get(new_meme_text)
+
+                    if new_score is not None:
+                        # Sanity check
+                        if current_score is None or new_score >= current_score * 0.80:
+                            final_meme = new_meme_text
+                            final_score = new_score
+                            action_taken = pending_action
+                            logger.debug(f"Node {node_id}: Applying {action_taken} result. New score {final_score:.3f}")
+                        else:
+                             logger.debug(f"Node {node_id}: New meme score ({new_score:.3f}) significantly lower than original ({current_score:.3f}). Reverting to keep.")
+                             action_taken = "keep (low score)"
+                    else:
+                        logger.warning(f"Node {node_id}: Generated meme '{new_meme_text[:50]}...' failed scoring. Reverting to keep.")
+                        action_taken = "keep (score failed)"
                 else:
-                     logger.error(f"Index mismatch during mutation update for node {node_id}.")
-                     action_type = "keep" # Fallback to keep if something went wrong
+                    log_msg = "failed" if not new_meme_text else "resulted in same meme"
+                    logger.debug(f"Node {node_id}: Action '{pending_action}' {log_msg}. Reverting to keep.")
+                    action_taken = f"keep ({pending_action} {log_msg})"
 
-            elif action_type == "merge":
-                if merge_idx < len(merged_memes) and score_idx < len(new_meme_scores):
-                    final_meme = merged_memes[merge_idx]
-                    final_score = new_meme_scores[score_idx]
-                    merge_idx += 1
-                    score_idx += 1
-                else:
-                     logger.error(f"Index mismatch during merge update for node {node_id}.")
-                     action_type = "keep" # Fallback to keep
-
-            # Sanity check: Don't adopt a much worse meme than original
-            if action_type != "keep" and final_score is not None and original_node_data.current_meme_score is not None:
-                 # Allow some drop, but not drastic (e.g., less than 80% of original score)
-                 if final_score < original_node_data.current_meme_score * 0.80:
-                      logger.debug(f"Node {node_id}: New meme score ({final_score:.3f}) significantly lower than original ({original_node_data.current_meme_score:.3f}). Reverting to keep.")
-                      action_type = "keep"
-
-            # Final update application
-            if action_type == "keep" or final_meme is None or final_score is None:
-                 # Ensure keep action is recorded if it wasn't already
-                 if node_id not in self.graph_manager.get_node_data(node_id).history: # Check if it was already processed as 'keep'
-                      self.graph_manager.update_node_meme(node_id, original_node_data.current_meme, original_node_data.current_meme_score, generation)
-            else:
-                 # Apply the new meme and score
-                 self.graph_manager.update_node_meme(node_id, final_meme, final_score, generation)
-                 logger.debug(f"Node {node_id}: Updated via {action_type} to meme score {final_score:.3f}")
+            # Always update node history
+            self.graph_manager.update_node_meme(node_id, final_meme, final_score, generation)
+            if action_taken != "keep":
+                 logger.debug(f"Node {node_id}: Final action -> {action_taken}. Meme: '{final_meme[:30]}...' Score: {final_score}")
 
 
         # Clear received memes for the next generation
@@ -254,82 +305,80 @@ class EvolutionEngine:
 
     def _mutate_initial_if_all_same(self):
         """
-        Checks if all memes are identical at the start. If so, mutates all.
-        This should be called once before the main simulation loop begins.
+        Checks if all memes are identical at the start. If so, mutates all using LLM
+        and scores using the configured fitness model.
         Updates the initial state (history[0], history_scores[0], current).
         """
         logger.info("Checking initial meme state for uniformity...")
         nodes_data = self.graph_manager.get_all_nodes_data()
         if not nodes_data:
              logger.info("Graph is empty, skipping initial mutation check.")
-             return False # Nothing to do
+             return False
 
-        # Use an iterator to get the first item without loading all keys/values if not needed
         try:
             first_node_data = next(iter(nodes_data.values()))
             first_meme = first_node_data.current_meme
         except StopIteration:
              logger.info("Graph has no nodes with data, skipping initial mutation check.")
-             return False # No data found
+             return False
 
         all_same = all(data.current_meme == first_meme for data in nodes_data.values())
 
         if all_same:
-            logger.info(f"All initial nodes have the same meme ('{first_meme[:50]}...'). Applying mutation to all.")
+            logger.info(f"All initial nodes have the same meme ('{first_meme[:50]}...'). Applying LLM mutation and '{self.fitness_model_type}' scoring.")
             all_node_ids = list(nodes_data.keys())
-            current_memes = [first_meme] * len(all_node_ids) # List of the same initial meme
+            current_memes = [first_meme] * len(all_node_ids)
 
-            # Mutate and score the initial meme variants
             mutated_memes = self.llm_service.mutate(current_memes, temperature=self.llm_config['temperature_mutate'])
-            new_scores = self.llm_service.score(mutated_memes, temperature=self.llm_config['temperature_score'])
+            new_scores = self._score_memes(mutated_memes)
 
             mutation_applied_count = 0
             for i, node_id in enumerate(all_node_ids):
+                 if i >= len(mutated_memes) or i >= len(new_scores):
+                     logger.error(f"Index out of bounds ({i}) during initial mutation for node {node_id}. Max mutated: {len(mutated_memes)}, Max scored: {len(new_scores)}. Skipping.")
+                     continue
+
                  new_meme = mutated_memes[i]
                  new_score = new_scores[i]
 
-                 # Get the specific node data object to update directly
                  node_data = self.graph_manager.get_node_data(node_id)
                  if not node_data:
                       logger.warning(f"Node {node_id}: Could not retrieve data during initial mutation. Skipping update.")
                       continue
 
-                 # Apply update only if mutation and scoring succeeded
-                 if new_meme != first_meme and new_meme != "" and new_score is not None: # Check if mutation is valid and score exists
-                      # --- Direct Update of Initial State ---
+                 if new_meme != first_meme and new_meme and new_score is not None and not np.isnan(new_score):
                       node_data.current_meme = new_meme
                       node_data.current_meme_score = new_score
-                      # Replace the first entry in history/scores
-                      if node_data.history:
-                           node_data.history[0] = new_meme
-                      else: # Should not happen if MemeNodeData initializes correctly
-                           node_data.history = [new_meme]
-
-                      if node_data.history_scores:
-                           # Ensure history_scores is long enough (might happen if init score was off)
-                           if len(node_data.history_scores) == 0:
-                                node_data.history_scores = [new_score]
-                           else:
-                                node_data.history_scores[0] = new_score
-                      else:
-                           node_data.history_scores = [new_score]
-                      # --- End Direct Update ---
+                      if node_data.history: node_data.history[0] = new_meme
+                      else: node_data.history = [new_meme]
+                      if node_data.history_scores: node_data.history_scores[0] = new_score
+                      else: node_data.history_scores = [new_score]
                       mutation_applied_count +=1
                       logger.debug(f"Node {node_id}: Initial meme mutated to '{new_meme[:30]}...' (Score: {new_score:.3f})")
-
-                 else: # Mutation/scoring failed or returned original/empty
-                      logger.warning(f"Node {node_id}: Failed mutation/scoring during initial 'mutate all' or meme unchanged. Keeping original initial meme.")
-                      # Ensure current score matches initial score history if it exists
-                      if node_data.history_scores and node_data.history_scores[0] is not None:
+                 else:
+                      log_reason = "meme unchanged/empty" if (new_meme == first_meme or not new_meme) else "scoring failed"
+                      logger.warning(f"Node {node_id}: Initial mutation {log_reason}. Keeping original.")
+                      # Try to ensure the original has a score
+                      if node_data.history_scores and node_data.history_scores[0] is not None and not np.isnan(node_data.history_scores[0]):
                            node_data.current_meme_score = node_data.history_scores[0]
-                      # No need to call update_node_meme, state is already correct
+                      else:
+                           logger.warning(f"Node {node_id}: Original initial meme '{first_meme[:30]}...' lacks valid score. Re-scoring.")
+                           original_score_list = self._score_memes([first_meme])
+                           original_score = original_score_list[0] if original_score_list else None
+                           if original_score is not None and not np.isnan(original_score):
+                                node_data.current_meme_score = original_score
+                                node_data.history_scores = [original_score] # Reset history score
+                           else:
+                                logger.error(f"Node {node_id}: Failed to score original initial meme. Score remains None.")
+                                node_data.current_meme_score = None
+                                node_data.history_scores = [None]
 
             logger.info(f"Applied initial mutation to {mutation_applied_count}/{len(all_node_ids)} nodes.")
-            return True # Indicates mutation occurred
+            return True
         else:
             logger.info("Initial memes are diverse. No initial mutation applied.")
-            return False # Indicates no mutation occurred
-
+            return False
+        
 
     def step(self, generation: int) -> int:
         """Performs one full generation step: propagate, process."""
