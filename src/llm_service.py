@@ -157,7 +157,7 @@ class LLMService(LLMServiceInterface):
                         continue
 
                     response_text = output[0]['generated_text']
-                    response_text = response_text.split(stop_sequence, 1)[0].strip()
+                    response_text = response_text.split(stop_sequence, 1)[0].strip().split('\n', 1)[0].strip()
 
                     is_valid, processed_response = validation_fn(response_text)
 
@@ -277,7 +277,7 @@ class LLMService(LLMServiceInterface):
              try:
                  outputs = self.text_generator(
                      batch_prompts,
-                     max_new_tokens=10, # Score should be very short
+                     max_new_tokens=1, # Score should be very short
                      do_sample=True,
                      temperature=temperature,
                      pad_token_id=self.tokenizer.eos_token_id,

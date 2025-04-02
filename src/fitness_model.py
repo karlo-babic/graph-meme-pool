@@ -72,11 +72,7 @@ class FitnessModel:
             texts: A list of strings (memes) to score.
 
         Returns:
-            A list of 'Sentiment Balance Scores' (float between 0 and 1).
-            - 1 indicates strongly positive relative to negative.
-            - 0 indicates strongly negative relative to positive.
-            - 0.5 indicates equal positive/negative strength or purely neutral.
-            Returns None if scoring failed for a specific text.
+            A list of 'Sentiment Scores' (float between 0 and 1).
         """
         if not self.model or not self.tokenizer:
             logger.error("FitnessModel not loaded. Cannot score texts.")
@@ -98,40 +94,15 @@ class FitnessModel:
                 logits = outputs.logits
                 probabilities = F.softmax(logits, dim=1)
 
-                # --- Score Calculation: Sentiment Balance Score ---
+                # --- Score Calculation: Sentiment Score ---
                 # Extract probabilities for positive (index 2) and negative (index 0)
                 if probabilities.shape[1] >= 3: # Ensure there are at least 3 classes
                     positive_scores_tensor = probabilities[:, 2] # Index 2 for positive
-                    negative_scores_tensor = probabilities[:, 0] # Index 0 for negative
+                    #negative_scores_tensor = probabilities[:, 0] # Index 0 for negative
+                    results = positive_scores_tensor.cpu().numpy()
                 else:
-                    logger.error(f"FitnessModel '{self.model_huggingpath}' output has fewer than 3 classes ({probabilities.shape[1]}). Cannot reliably calculate sentiment balance.")
+                    logger.error(f"FitnessModel '{self.model_huggingpath}' output has fewer than 3 classes ({probabilities.shape[1]}).")
                     return [None] * len(texts)
-
-                # Calculate the sum of positive and negative probabilities
-                sum_pn = positive_scores_tensor + negative_scores_tensor
-
-                # Define a small threshold for numerical stability (avoid division by zero)
-                threshold = 1e-9
-
-                # Calculate score: P_pos / (P_pos + P_neg) where sum is non-zero, else 0.5
-                # Uses torch.where for element-wise conditional logic
-                sentiment_balance_score_tensor = torch.where(
-                    sum_pn > threshold,
-                    positive_scores_tensor / sum_pn,
-                    # If sum is zero (i.e., both P_pos and P_neg are zero), output 0.5 (balanced)
-                    torch.tensor(0.5, device=device, dtype=positive_scores_tensor.dtype) # Ensure 0.5 is on correct device and dtype
-                )
-
-                scores_np = sentiment_balance_score_tensor.cpu().numpy()
-
-            # Ensure scores are floats and handle potential NaN/Inf
-            for i, score in enumerate(scores_np):
-                 if isinstance(score, (float, np.floating)) and np.isfinite(score):
-                      # Clamp score to [0, 1] just in case of floating point inaccuracies
-                      results[i] = float(np.clip(score, 0.0, 1.0))
-                 else:
-                      logger.warning(f"FitnessModel produced invalid score ({score}) for text index {i}. Assigning None.")
-                      results[i] = None
 
             logger.debug(f"FitnessModel: Scoring complete.")
 

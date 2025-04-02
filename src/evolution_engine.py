@@ -303,7 +303,6 @@ class EvolutionEngine:
         and scores using the configured fitness model.
         Updates the initial state (history[0], history_scores[0], current).
         """
-        logger.info("Checking initial meme state for uniformity...")
         nodes_data = self.graph_manager.get_all_nodes_data()
         if not nodes_data:
              logger.info("Graph is empty, skipping initial mutation check.")
@@ -351,7 +350,7 @@ class EvolutionEngine:
                       logger.debug(f"Node {node_id}: Initial meme mutated to '{new_meme[:30]}...' (Score: {new_score:.3f})")
                  else:
                       log_reason = "meme unchanged/empty" if (new_meme == first_meme or not new_meme) else "scoring failed"
-                      logger.warning(f"Node {node_id}: Initial mutation {log_reason}. Keeping original.")
+                      logger.warning(f"Node {node_id}: Initial mutation failed: {log_reason}. Keeping original.")
                       # Try to ensure the original has a score
                       if node_data.history_scores and node_data.history_scores[0] is not None and not np.isnan(node_data.history_scores[0]):
                            node_data.current_meme_score = node_data.history_scores[0]

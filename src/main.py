@@ -62,7 +62,7 @@ if __name__ == "__main__":
     # --- Initialize Components ---
     graph_manager = None
     llm_service = None
-    fitness_model_instance = None # Initialize as None
+    fitness_model_instance = None
     evolution_engine = None
     visualizer = None
 

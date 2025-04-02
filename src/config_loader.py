@@ -23,8 +23,8 @@ DEFAULT_CONFIG = {
     },
     'llm': {
         'huggingpath': "microsoft/Phi-3-mini-4k-instruct",
-        'temperature_mutate': 0.5,
-        'temperature_merge': 0.5,
+        'temperature_mutate': 0.8,
+        'temperature_merge': 0.8,
         'temperature_score': 0.2,
         'max_new_tokens': 100
     },
