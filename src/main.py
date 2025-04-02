@@ -110,64 +110,67 @@ if __name__ == "__main__":
     graph_load_path = Path(config['paths']['graph_save_dir']) / f"{graph_base_name}.json"
 
     if graph_load_path.exists():
-         logger.info(f"Attempting to load existing graph from {graph_load_path}")
-         try:
-             graph_manager.load_graph(graph_base_name)
-             # TODO: Decide if I want to load propagation history too if it exists
-         except Exception as e:
-             logger.error(f"Failed to load graph: {e}. Creating a new graph instead.")
-             graph_manager.create_graph()
+        logger.info(f"Attempting to load existing graph from {graph_load_path}")
+        try:
+            graph_manager.load_graph(graph_base_name)
+            # TODO: Decide if I want to load propagation history too if it exists
+        except Exception as e:
+            logger.error(f"Failed to load graph: {e}. Creating a new graph instead.")
+            graph_manager.create_graph()
     else:
-         logger.info("No existing graph found. Creating a new graph.")
-         graph_manager.create_graph()
+        logger.info("No existing graph found. Creating a new graph.")
+        graph_manager.create_graph()
 
 
     # --- Run Simulation ---
     try:
-         # Initial visualization (optional)
-         if config['simulation']['initial_score']:
-              logger.info("Performing initial scoring before simulation run...")
-              evolution_engine.initialize_scores() # Uses configured scoring method
-              # Visualize state *after* initial scoring
-              # Check if visualizer was successfully initialized
-              if visualizer:
-                   if config['visualization']['draw_score_per_gen']:
-                        visualizer.draw_score(generation=0) # Label as gen 0
-                   if config['visualization']['draw_change_per_gen']:
-                        visualizer.draw_change(generation=0) # Label as gen 0
-                   if config['visualization']['draw_semantic_diff_per_gen']:
-                        visualizer.draw_semantic_difference(generation=0) # Label as gen 0
-              else:
-                  logger.warning("Visualizer not initialized, skipping initial visualizations.")
+        # Check and potentially mutate initial uniform state
+        evolution_engine.mutate_initial_if_all_same()
+
+        # Initial visualization (optional)
+        if config['simulation']['initial_score']:
+            logger.info("Performing initial scoring before simulation run...")
+            evolution_engine.initialize_scores() # Uses configured scoring method
+            # Visualize state *after* initial scoring
+            # Check if visualizer was successfully initialized
+            if visualizer:
+                if config['visualization']['draw_score_per_gen']:
+                    visualizer.draw_score(generation=0) # Label as gen 0
+                if config['visualization']['draw_change_per_gen']:
+                    visualizer.draw_change(generation=0) # Label as gen 0
+                if config['visualization']['draw_semantic_diff_per_gen']:
+                    visualizer.draw_semantic_difference(generation=0) # Label as gen 0
+            else:
+                logger.warning("Visualizer not initialized, skipping initial visualizations.")
 
 
-         logger.info("Starting evolution loop...")
-         simulation_generator = evolution_engine.run_simulation()
+        logger.info("Starting evolution loop...")
+        simulation_generator = evolution_engine.run_simulation()
 
-         for completed_generation_index in simulation_generator:
-              # Per-generation visualization calls controlled here
-              if visualizer: # Check again in case initialization failed
-                   generation_num_for_vis = completed_generation_index + 1
-                   if config['visualization']['draw_score_per_gen']:
-                        visualizer.draw_score(generation=generation_num_for_vis)
-                   if config['visualization']['draw_change_per_gen']:
-                        # Draw change might need history, pass lookback parameter if needed
-                        visualizer.draw_change(generation=generation_num_for_vis, history_lookback=4) # Example lookback
-                   if config['visualization']['draw_semantic_diff_per_gen']:
-                        visualizer.draw_semantic_difference(generation=generation_num_for_vis)
+        for completed_generation_index in simulation_generator:
+            # Per-generation visualization calls controlled here
+            if visualizer: # Check again in case initialization failed
+                generation_num_for_vis = completed_generation_index + 1
+                if config['visualization']['draw_score_per_gen']:
+                    visualizer.draw_score(generation=generation_num_for_vis)
+                if config['visualization']['draw_change_per_gen']:
+                    # Draw change might need history, pass lookback parameter if needed
+                    visualizer.draw_change(generation=generation_num_for_vis, history_lookback=4) # Example lookback
+                if config['visualization']['draw_semantic_diff_per_gen']:
+                    visualizer.draw_semantic_difference(generation=generation_num_for_vis)
 
 
     except Exception as e:
-         logger.critical(f"Simulation failed during execution: {e}", exc_info=True)
-         # Save state even if simulation fails mid-way?
-         if graph_manager:
-             logger.info("Attempting to save graph state after error...")
-             try:
-                 graph_manager.save_graph(graph_base_name + "_error_state")
-                 graph_manager.save_propagation_history(graph_base_name + "_error_state_propagation")
-             except Exception as save_err:
-                 logger.error(f"Could not save error state: {save_err}")
-         sys.exit(1)
+        logger.critical(f"Simulation failed during execution: {e}", exc_info=True)
+        # Save state even if simulation fails mid-way?
+        if graph_manager:
+            logger.info("Attempting to save graph state after error...")
+            try:
+                graph_manager.save_graph(graph_base_name + "_error_state")
+                graph_manager.save_propagation_history(graph_base_name + "_error_state_propagation")
+            except Exception as save_err:
+                logger.error(f"Could not save error state: {save_err}")
+        sys.exit(1)
 
 
     # --- Final Actions ---

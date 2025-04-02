@@ -297,7 +297,7 @@ class EvolutionEngine:
         logger.debug(f"Generation {generation}: Finished processing memes.")
 
 
-    def _mutate_initial_if_all_same(self):
+    def mutate_initial_if_all_same(self):
         """
         Checks if all memes are identical at the start. If so, mutates all using LLM
         and scores using the configured fitness model.
@@ -388,9 +388,6 @@ class EvolutionEngine:
         """Runs the full simulation loop."""
         num_generations = self.config['generations']
         logger.info(f"Starting simulation for {num_generations} generations.")
-
-        # Check and potentially mutate initial uniform state
-        self._mutate_initial_if_all_same()
 
         # --- Main Evolution Loop ---
         last_completed_generation = -1
