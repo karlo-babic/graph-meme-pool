@@ -19,7 +19,6 @@ DEFAULT_CONFIG = {
         'generations': 50,
         'threshold': 0.2,
         'initial_score': True,
-        'fitness_model': 'llm',
         'fitness_model_huggingpath': ''
     },
     'llm': {

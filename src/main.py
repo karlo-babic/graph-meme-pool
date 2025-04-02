@@ -75,22 +75,17 @@ if __name__ == "__main__":
         llm_service.load() # Load LLM model early
 
         # Conditionally load Fitness Model
-        fitness_model_type = config.get('simulation', {}).get('fitness_model', 'llm').lower()
-        logger.info(f"Fitness model type selected: '{fitness_model_type}'")
+        fitness_model_huggingpath = config['simulation']['fitness_model_huggingpath'].lower()
+        logger.info(f"Fitness model selected: '{fitness_model_huggingpath if fitness_model_huggingpath else 'LLM'}'")
 
-        if fitness_model_type == 'custom':
-            model_path = config['simulation']['fitness_model_huggingpath']
-            if model_path:
-                logger.info(f"Initializing Fitness Model from path: {model_path}")
-                try:
-                    fitness_model_instance = FitnessModel(model_huggingpath=model_path)
-                    fitness_model_instance.load() # Load the fitness model
-                except Exception as fm_error:
-                    logger.error(f"Failed to load Fitness Model: {fm_error}. Simulation may proceed using only LLM for scoring if possible, or fail.", exc_info=True)
-                    sys.exit(1)
-            else:
-                logger.error("Fitness model type is 'custom' but 'simulation.fitness_model_huggingpath' is not set in config. Cannot load fitness model.")
-                # sys.exit(1)
+        if fitness_model_huggingpath:
+            logger.info(f"Initializing Fitness Model from path: {fitness_model_huggingpath}")
+            try:
+                fitness_model_instance = FitnessModel(model_huggingpath=fitness_model_huggingpath)
+                fitness_model_instance.load() # Load the fitness model
+            except Exception as fm_error:
+                logger.error(f"Failed to load Fitness Model: {fm_error}. Simulation may proceed using only LLM for scoring if possible, or fail.", exc_info=True)
+                sys.exit(1)
 
 
         # --- Pass BOTH services (or None for fitness_model) to EvolutionEngine ---

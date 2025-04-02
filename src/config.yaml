@@ -9,19 +9,18 @@ graph_generation:
   type: 'small_worlds'  # 'example' or 'small_world' or 'small_worlds'
   initial_meme_assignment: 'random'  # Assignment of memes to nodes: random or structured
   params:
-    n: 10      # Nodes per group (for small_worlds) or total nodes (for small_world)
+    n: 30      # Nodes per group (for small_worlds) or total nodes (for small_world)
     k: 4       # Each node is joined with its k nearest neighbors in ring topology
     p: 0.3     # Probability of rewiring each edge (small_world/s)
     b: 0.3     # Probability of adding a backward edge
-    g: 2       # Number of groups (for small_worlds)
+    g: 4       # Number of groups (for small_worlds)
     inter_p: 0.1 # Probability of inter-group connection (for small_worlds)
 
 simulation:
-  generations: 3
+  generations: 50
   threshold: 0.2  # Score ratio threshold for merge/mutate/keep decision
   initial_score: true  # Whether to score initial memes before first generation
-  fitness_model: 'custom'  # 'llm' (must define prompt_score below) or 'custom' (a model that outputs a score for a text)
-  fitness_model_huggingpath: 'cardiffnlp/twitter-roberta-base-sentiment-latest'
+  fitness_model_huggingpath: ''  # path to a model on huggingface (e.g. 'cardiffnlp/twitter-roberta-base-sentiment-latest'), or empty string ('') -> using LLM with prompt_score below
 
 llm:
   huggingpath: "microsoft/Phi-3-mini-4k-instruct"

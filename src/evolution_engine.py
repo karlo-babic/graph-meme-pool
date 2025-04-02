@@ -22,18 +22,15 @@ class EvolutionEngine:
         self.fitness_model = fitness_model # Store the fitness model instance
         self.config = config['simulation']
         self.llm_config = config['llm'] # For LLM-specific parameters
-        self.fitness_model_type = self.config.get('fitness_model', 'llm').lower() # Store for easy access
+        self.fitness_model_huggingpath = self.config['fitness_model_huggingpath'].lower() # Store for easy access
         random.seed(config['seed'])
 
         # Validation
-        if self.fitness_model_type == 'custom' and not self.fitness_model:
+        if self.fitness_model_huggingpath and not self.fitness_model:
              logger.warning("EvolutionEngine initialized for 'custom' fitness type, but no FitnessModel instance provided. Scoring will likely fail.")
-        elif self.fitness_model_type == 'llm' and not self.llm_service:
+        elif not self.fitness_model_huggingpath and not self.llm_service:
              logger.critical("EvolutionEngine initialized for 'llm' fitness type, but no LLMService instance provided. Scoring will fail.")
              raise ValueError("LLMService instance is required for 'llm' fitness model type.")
-        elif self.fitness_model_type not in ['llm', 'custom']:
-             logger.error(f"Unknown fitness_model type '{self.fitness_model_type}' in config. Defaulting to 'llm'.")
-             self.fitness_model_type = 'llm'
 
     def _score_memes(self, memes: List[str]) -> List[Optional[float]]:
         """Scores memes using the method specified in the config, handling uniqueness."""
@@ -43,7 +40,7 @@ class EvolutionEngine:
         unique_memes = list(dict.fromkeys(memes)) # Maintain order while getting uniques
         unique_scores = {}
 
-        if self.fitness_model_type == 'custom':
+        if self.fitness_model_huggingpath:
             if self.fitness_model:
                 logger.debug(f"Scoring {len(unique_memes)} unique memes using FitnessModel.")
                 scores_list = self.fitness_model.score(unique_memes)
@@ -51,7 +48,7 @@ class EvolutionEngine:
             else:
                 logger.error("FitnessModel ('custom') selected but not available. Returning None scores.")
                 unique_scores = {meme: None for meme in unique_memes}
-        elif self.fitness_model_type == 'llm':
+        else:
             if self.llm_service:
                  logger.debug(f"Scoring {len(unique_memes)} unique memes using LLM.")
                  scores_list = self.llm_service.score(unique_memes, temperature=self.llm_config['temperature_score'])
@@ -59,9 +56,6 @@ class EvolutionEngine:
             else:
                 logger.error("LLMService ('llm') selected but not available. Returning None scores.")
                 unique_scores = {meme: None for meme in unique_memes}
-        else:
-            logger.error(f"Invalid fitness_model type '{self.fitness_model_type}' during scoring.")
-            unique_scores = {meme: None for meme in unique_memes}
 
         # Map scores back to the original list
         final_scores = [unique_scores.get(meme) for meme in memes]
@@ -86,7 +80,7 @@ class EvolutionEngine:
             logger.info("All initial memes already have valid scores.")
             return
 
-        logger.info(f"Found {len(memes_to_score)} unique initial memes needing scores (using '{self.fitness_model_type}' model).")
+        logger.info(f"Found {len(memes_to_score)} unique initial memes needing scores.")
         meme_list = list(memes_to_score)
         scores = self._score_memes(meme_list)
 
@@ -130,7 +124,7 @@ class EvolutionEngine:
     
     def _process_received_memes(self, generation: int):
         """Nodes process received memes: score, compare, merge/mutate, update."""
-        logger.debug(f"Generation {generation}: Processing received memes using '{self.fitness_model_type}' scores...")
+        logger.debug(f"Generation {generation}: Processing received memes...")
         nodes_data = self.graph_manager.get_all_nodes_data()
         threshold = self.config['threshold']
         mutation_candidates: List[str] = []
@@ -244,7 +238,7 @@ class EvolutionEngine:
 
         new_meme_score_map: Dict[str, Optional[float]] = {}
         if unique_generated_memes:
-            logger.info(f"Generation {generation}: Scoring {len(unique_generated_memes)} newly generated unique memes using '{self.fitness_model_type}' model.")
+            logger.info(f"Generation {generation}: Scoring {len(unique_generated_memes)} newly generated unique memes.")
             new_scores = self._score_memes(unique_generated_memes)
             new_meme_score_map = {meme: score for meme, score in zip(unique_generated_memes, new_scores)}
         else:
@@ -325,7 +319,7 @@ class EvolutionEngine:
         all_same = all(data.current_meme == first_meme for data in nodes_data.values())
 
         if all_same:
-            logger.info(f"All initial nodes have the same meme ('{first_meme[:50]}...'). Applying LLM mutation and '{self.fitness_model_type}' scoring.")
+            logger.info(f"All initial nodes have the same meme ('{first_meme[:50]}...'). Mutating and scoring.")
             all_node_ids = list(nodes_data.keys())
             current_memes = [first_meme] * len(all_node_ids)
 
