@@ -149,7 +149,7 @@ if __name__ == "__main__":
 
         for completed_generation_index in simulation_generator:
             # Per-generation visualization calls controlled here
-            if visualizer: # Check again in case initialization failed
+            if visualizer:
                 generation_num_for_vis = completed_generation_index + 1
                 if config['visualization']['draw_score_per_gen']:
                     visualizer.draw_score(generation=generation_num_for_vis)

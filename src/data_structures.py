@@ -30,4 +30,3 @@ class PropagationEvent:
     source_node: Any
     target_node: Any
     meme: str
-    weight: float # Influence weight used for this propagation

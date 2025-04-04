@@ -114,9 +114,7 @@ class EvolutionEngine:
             for neighbor_id in neighbors:
                 weight = self.graph_manager.get_edge_weight(node_id, neighbor_id)
                 if random.random() < weight:
-                    self.graph_manager.add_received_meme(neighbor_id, current_meme, weight)
-                    # Record the propagation event
-                    self.graph_manager.record_propagation(generation, node_id, neighbor_id, current_meme, weight)
+                    self.graph_manager.add_received_meme(node_id, neighbor_id, current_meme, weight)
                     propagated_count += 1
 
         logger.debug(f"Generation {generation}: {propagated_count} meme propagations occurred.")
@@ -149,7 +147,7 @@ class EvolutionEngine:
                      data.history_scores.extend(padding)
                      data.history_scores.append(data.current_meme_score)
 
-            for meme, weight in data.received_memes:
+            for _, meme, _ in data.received_memes:
                 all_memes_in_play.add(meme)
 
         # Score any memes not already in the cache
@@ -181,16 +179,21 @@ class EvolutionEngine:
                  logger.warning(f"Node {node_id}: Current meme '{current_meme[:50]}...' has no valid score in cache. Keeping current meme.")
                  continue
 
+            best_sender_id: Optional[int] = None
             best_received_meme: Optional[str] = None
             best_received_score: float = -1.0
-            for meme, weight in data.received_memes:
+            for sender_node_id, meme, _ in data.received_memes:
                 score = meme_score_cache.get(meme)
                 if score is not None and score > best_received_score:
+                    best_sender_id = sender_node_id
                     best_received_meme = meme
                     best_received_score = score
 
             if best_received_meme is None:
                  continue
+            
+            # Record the successful propagation event
+            self.graph_manager.record_propagation(generation, best_sender_id, node_id, best_received_meme)
 
             # Use a small epsilon for division to prevent errors with zero scores
             score_ratio = best_received_score / (current_meme_score + 1e-9)

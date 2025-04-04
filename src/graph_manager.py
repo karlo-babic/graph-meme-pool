@@ -1,6 +1,7 @@
 import networkx as nx
 import random
 import json
+import numpy as np
 import logging
 from pathlib import Path
 from typing import List, Any, Optional, Dict
@@ -170,7 +171,7 @@ class GraphManager:
         )
 
         # Create graph topology
-        undirected_G = nx.watts_strogatz_graph(n, k, p, seed=random.randint(0, 10000))
+        undirected_G = nx.watts_strogatz_graph(n, k, p, seed=self.random_seed)
 
         # Add nodes with assigned memes
         for i in range(n):
@@ -214,7 +215,7 @@ class GraphManager:
         # Create nodes and intra-group edges
         for group_idx in range(g):
             # Generate topology specific to this group (optional, could be done once globally too)
-            undirected_G = nx.watts_strogatz_graph(n, k, p, seed=random.randint(0, 10000))
+            undirected_G = nx.watts_strogatz_graph(n, k, p, seed=self.random_seed)
             node_offset = group_idx * n
 
             for i in range(n):
@@ -275,17 +276,59 @@ class GraphManager:
         filepath = save_dir / f"{filename}.json"
 
         try:
-            # Convert MemeNodeData objects to dictionaries for serialization
+            # Get node-link data structure
             serializable_data = json_graph.node_link_data(self.graph)
-            for node in serializable_data['nodes']:
-                 if 'data' in node and isinstance(node['data'], MemeNodeData):
-                     node['data'] = node['data'].__dict__ # Convert dataclass to dict
 
+            # --- Conversion Step ---
+            # Iterate through nodes and convert data attributes
+            for node_dict in serializable_data.get('nodes', []):
+                if 'data' in node_dict and isinstance(node_dict['data'], MemeNodeData):
+                    # Convert dataclass to dict first
+                    data_dict = node_dict['data'].__dict__
+                    # Now iterate through the dict and convert numpy types
+                    for key, value in data_dict.items():
+                        if isinstance(value, list):
+                            # Convert elements within lists
+                            data_dict[key] = [
+                                float(item) if isinstance(item, (np.float_, np.float16, np.float32, np.float64)) else
+                                int(item) if isinstance(item, (np.int_, np.int8, np.int16, np.int32, np.int64)) else
+                                item # Keep other types as is
+                                for item in value
+                            ]
+                        elif isinstance(value, (np.float_, np.float16, np.float32, np.float64)):
+                            data_dict[key] = float(value)
+                        elif isinstance(value, (np.int_, np.int8, np.int16, np.int32, np.int64)):
+                            data_dict[key] = int(value)
+                        # Add other numpy types if needed (e.g., np.bool_)
+
+                    # Replace original data object with the converted dict
+                    node_dict['data'] = data_dict
+                # Add similar conversion logic if other attributes outside 'data' could be numpy types
+                # Example: Convert top-level node attributes if necessary
+                # for key, value in node_dict.items():
+                #     if isinstance(value, np.float32): node_dict[key] = float(value)
+                #     elif isinstance(value, np.int64): node_dict[key] = int(value)
+            # --- End Conversion Step ---
+
+            # Save the modified data
             with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(serializable_data, f, indent=2)
+                # Use default=str as a fallback, though explicit conversion is better
+                json.dump(serializable_data, f, indent=2) # Removed default=str, rely on explicit conversion
             logger.info(f"Graph saved successfully to {filepath}")
+
+        except TypeError as te:
+             # Catch potential lingering TypeErrors during dump
+             logger.error(f"JSON serialization failed after explicit conversion: {te}. There might be unhandled numpy types.", exc_info=True)
+             # Optionally try again with default=str as a last resort.
+             try:
+                 with open(filepath, "w", encoding="utf-8") as f:
+                     json.dump(serializable_data, f, indent=2, default=str)
+                 logger.warning(f"Graph saved with default=str fallback after error.")
+             except Exception as e:
+                 logger.error(f"Failed to save graph even with fallback: {e}")
+
         except Exception as e:
-            logger.error(f"Failed to save graph to {filepath}: {e}")
+            logger.error(f"Failed to save graph to {filepath}: {e}", exc_info=True)
 
     def load_graph(self, filename: Optional[str] = None):
         """Loads the graph state from a JSON file."""
@@ -434,11 +477,11 @@ class GraphManager:
              logger.warning(f"Attempted to update score for non-existent node: {node_id}")
 
 
-    def add_received_meme(self, node_id: Any, meme: str, weight: float):
+    def add_received_meme(self, sender_node_id: Any, node_id: Any, meme: str, weight: float):
         """Adds a meme received by a node in the current step."""
         node_data = self.get_node_data(node_id)
         if node_data:
-            node_data.received_memes.append((meme, weight))
+            node_data.received_memes.append((sender_node_id, meme, weight))
         else:
             logger.warning(f"Attempted to add received meme to non-existent node: {node_id}")
 
@@ -456,14 +499,13 @@ class GraphManager:
 
     # --- Propagation Tracking ---
 
-    def record_propagation(self, generation: int, source: Any, target: Any, meme: str, weight: float):
+    def record_propagation(self, generation: int, source: Any, target: Any, meme: str):
         """Records a meme propagation event."""
         event = PropagationEvent(
             generation=generation,
             source_node=source,
             target_node=target,
-            meme=meme,
-            weight=weight
+            meme=meme
         )
         self.propagation_history.append(event)
 
