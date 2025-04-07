@@ -338,13 +338,12 @@ class GraphManager:
     def load_graph(self, filename: Optional[str] = None):
         """Loads the graph state from a JSON file."""
         self.loaded_last_generation = -1 # Reset before loading
-        if filename is None:
-            filename = self.config['paths']['graph_basename']
+        base_filename = filename if filename is not None else self.config['paths']['graph_basename']
         load_dir = Path(self.config['paths']['graph_save_dir'])
-        filepath = load_dir / f"{filename}.json"
+        graph_filepath = load_dir / f"{base_filename}.json"
 
         try:
-            with open(filepath, "r", encoding="utf-8") as f:
+            with open(graph_filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
             # Convert dictionaries back to MemeNodeData objects
@@ -368,22 +367,66 @@ class GraphManager:
                     }
                     node_data_dict['data'] = MemeNodeData(**meme_data_args)
 
-
             self.graph = json_graph.node_link_graph(data, directed=True, multigraph=False)
             self.loaded_last_generation = self.graph.graph.get('last_completed_generation', -1)
-            logger.info(f"Graph loaded successfully from {filepath}")
+            graph_loaded_successfully = True # Mark as successful
+            logger.info(f"Graph loaded successfully from {graph_filepath}")
             logger.info(f"Loaded graph has {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges.")
             logger.info(f"Loaded graph metadata indicates completion up to generation index: {self.loaded_last_generation}")
-            # Optionally load propagation history if saved separately
         except FileNotFoundError:
-            logger.error(f"Graph file not found: {filepath}")
+            logger.error(f"Graph file not found: {graph_filepath}")
             raise
         except json.JSONDecodeError:
-            logger.error(f"Error decoding JSON from graph file: {filepath}")
+            logger.error(f"Error decoding JSON from graph file: {graph_filepath}")
             raise
         except Exception as e:
-            logger.error(f"Failed to load graph from {filepath}: {e}")
+            logger.error(f"Failed to load graph from {graph_filepath}: {e}")
             raise
+
+        # Load propagation history
+        if graph_loaded_successfully:
+            history_filename = f"{base_filename}_propagation.json"
+            history_filepath = load_dir / history_filename
+            logger.info(f"Attempting to load propagation history from {history_filepath}")
+            self.propagation_history = [] # Reset history before attempting load
+
+            try:
+                with open(history_filepath, "r", encoding="utf-8") as f:
+                    history_data = json.load(f)
+
+                if isinstance(history_data, list):
+                     loaded_count = 0
+                     skipped_count = 0
+                     for event_dict in history_data:
+                          if isinstance(event_dict, dict):
+                               try:
+                                    # Convert dict back to PropagationEvent dataclass
+                                    event = PropagationEvent(**event_dict)
+                                    self.propagation_history.append(event)
+                                    loaded_count += 1
+                               except TypeError as te:
+                                    # Handles case where dict keys don't match dataclass fields
+                                    logger.warning(f"Skipping history event due to mismatching data: {event_dict}. Error: {te}")
+                                    skipped_count += 1
+                          else:
+                               logger.warning(f"Skipping non-dictionary item found in history file: {event_dict}")
+                               skipped_count += 1
+
+                     logger.info(f"Successfully loaded {loaded_count} propagation events. Skipped {skipped_count} invalid entries.")
+                else:
+                     logger.warning(f"Propagation history file {history_filepath} does not contain a list. Skipping history load.")
+                     self.propagation_history = [] # Ensure it's empty
+
+            except FileNotFoundError:
+                 logger.warning(f"Propagation history file {history_filepath} not found. Starting with empty history.")
+                 self.propagation_history = [] # Ensure it's empty
+            except json.JSONDecodeError:
+                 logger.error(f"Error decoding JSON from history file {history_filepath}. Starting with empty history.")
+                 self.propagation_history = []
+            except Exception as e:
+                 logger.error(f"Failed to load or process propagation history from {history_filepath}: {e}", exc_info=True)
+                 self.propagation_history = [] # Ensure clean state on error
+
 
     def save_propagation_history(self, filename: Optional[str] = None):
         """Saves the propagation history to a JSON file."""

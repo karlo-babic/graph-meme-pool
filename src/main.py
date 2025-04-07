@@ -78,7 +78,6 @@ if __name__ == "__main__":
             graph_manager.load_graph(graph_base_name)
             start_generation_index = graph_manager.loaded_last_generation + 1
             logger.info(f"Resuming simulation from generation index {start_generation_index}")
-            # TODO: Decide if I want to load propagation history too if it exists
         except Exception as e:
             logger.error(f"Failed to load graph: {e}. Creating a new graph instead.")
             graph_manager.create_graph()

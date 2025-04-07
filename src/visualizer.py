@@ -6,6 +6,8 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Dict, Any, Optional, Tuple, List
 
+from PIL import Image
+
 from graph_manager import GraphManager
 from data_structures import MemeNodeData
 # Import embedding utils if needed, or receive model/functions
@@ -405,14 +407,26 @@ class Visualizer:
 
 
 
-    def draw_semantic_drift(self):
-        """Visualizes semantic drift of memes per node over time using embedding space trajectories."""
+    def draw_semantic_drift(self, num_generations: int = -1, visible_groups: Optional[List[Any]] = None):
+        """
+        Visualizes semantic drift of memes per node over time using embedding space trajectories.
+
+        Args:
+            num_generations (int): The maximum number of generations (history steps) to include.
+                                   Defaults to -1 (include all).
+            visible_groups (Optional[List[Any]]): A list of group identifiers for which to display
+                                                  trajectories. If None (default), trajectories for
+                                                  all groups are displayed. Nodes from *all* groups
+                                                  are still used for embedding calculation and
+                                                  dimensionality reduction.
+        """
         if not self.embedding_model:
             logger.warning("Skipping draw_semantic_drift: Embedding model not available.")
             return
 
         G = self.graph_manager.graph
         if G.number_of_nodes() == 0:
+            logger.warning("Skipping draw_semantic_drift: Graph has no nodes.")
             return
 
         # Collect all meme histories and associated metadata
@@ -421,20 +435,32 @@ class Visualizer:
         node_groups = {}     # node_id -> group
 
         for node_id in G.nodes():
+            # Use a safer way to access node data if structure varies
             data = self.graph_manager.get_node_data(node_id)
-            if data and data.history:
+            # Check if data exists and has 'history' attribute
+            if hasattr(data, 'history') and data.history:
+                group = getattr(data, 'group', 0) # Default group 0 if not present
+                node_groups[node_id] = group
                 for t, meme in enumerate(data.history):
-                    all_texts.append(meme)
+                    if num_generations >= 0 and t >= num_generations:
+                        break
+                    all_texts.append(str(meme)) # Ensure text is string
                     text_index_map.append((node_id, t))
-                node_groups[node_id] = data.group if data.group is not None else 0
+
+        if not all_texts:
+             logger.warning("Skipping draw_semantic_drift: No meme history found in any node.")
+             return
 
         # Compute all embeddings
+        logger.info(f"Calculating embeddings for {len(all_texts)} memes...")
         all_embeddings = emb_utils.calculate_sentence_embeddings(all_texts, self.embedding_model)
-        if all_embeddings.size == 0:
+        if all_embeddings is None or all_embeddings.size == 0:
             logger.error("Failed to calculate embeddings for draw_semantic_drift. Skipping plot.")
             return
 
         # Reduce to 2D using t-SNE
+        logger.info(f"Reducing dimensionality for {len(all_texts)} memes...")
+        # Ensure embeddings_dict keys match indices expected by text_index_map
         embeddings_dict = {i: emb for i, emb in enumerate(all_embeddings)}
         reduced_2d = emb_utils.reduce_dimensions_tsne(embeddings_dict, random_state=42)
         if not reduced_2d:
@@ -450,38 +476,80 @@ class Visualizer:
                 node_timesteps[node_id].append(timestep)
 
         # Set up colormap for clusters
-        unique_groups = sorted(set(node_groups.values()))
+        unique_groups = sorted(list(set(node_groups.values()))) # Use list() for safety
+        if not unique_groups:
+             logger.warning("Skipping draw_semantic_drift: No groups found for nodes.")
+             return
         cmap = plt.cm.get_cmap('tab10', len(unique_groups))
         group_to_color = {g: cmap(i) for i, g in enumerate(unique_groups)}
 
+        # Convert visible_groups to a set for efficient lookup, if provided
+        visible_groups_set = set(visible_groups) if visible_groups is not None else None
+
         # Plotting
+        logger.info(f"Plotting...")
         plt.figure(figsize=(15, 15))
+        nodes_plotted = 0
         for node_id, trail in node_trails.items():
-            group = node_groups.get(node_id, 0)
-            color = group_to_color.get(group, (0.5, 0.5, 0.5))
+            group = node_groups.get(node_id, 0) # Get group, default 0
 
-            timesteps = node_timesteps[node_id]
-            n = len(trail)
-            for i in range(n - 1):
-                x1, y1 = trail[i]
-                x2, y2 = trail[i + 1]
-                alpha = (i + 1) / (n - 1) if n > 1 else 1.0
-                plt.plot([x1, x2], [y1, y2],
-                        color=color,
-                        alpha=alpha,
-                        linewidth=1.5)
-            for i, (x, y) in enumerate(trail):
-                alpha = (i + 1) / n if n > 1 else 1.0
-                plt.scatter(x, y, color=color, alpha=alpha, s=10)
+            # Check if this group should be visible
+            if visible_groups_set is None or group in visible_groups_set:
+                nodes_plotted += 1
+                color = group_to_color.get(group, (0.5, 0.5, 0.5)) # Default color grey
 
-        plt.title("Semantic Drift of Memes Over Time (Colored by Cluster)")
+                timesteps = node_timesteps[node_id]
+                n = len(trail)
+                max_time = max(timesteps) if timesteps else 0
+
+                # Plot lines connecting consecutive points
+                for i in range(n - 1):
+                    x1, y1 = trail[i]
+                    x2, y2 = trail[i + 1]
+                    # Alpha based on normalized time step for better temporal flow visualization
+                    current_time = timesteps[i]
+                    alpha = (current_time + 1) / (max_time + 1) if max_time > 0 else 1.0
+                    plt.plot([x1, x2], [y1, y2],
+                             color=color,
+                             alpha=min(1.0, max(0.1, alpha * 0.8)), # Ensure alpha is within bounds
+                             linewidth=0.6)
+
+                # Plot points (markers)
+                for i, (x, y) in enumerate(trail):
+                    current_time = timesteps[i]
+                    alpha = (current_time + 1) / (max_time + 1) if max_time > 0 else 1.0
+                     # Use alpha for points as well, maybe slightly stronger
+                    plt.scatter(x, y,
+                                color=color,
+                                alpha=min(1.0, max(0.1, alpha)),
+                                s=10,
+                                edgecolors='none') # Remove edgecolors for cleaner look
+
+        if nodes_plotted == 0:
+            logger.warning("No nodes were plotted. Check if 'visible_groups' parameter is set correctly or if data exists for the specified groups.")
+
+        title = "Semantic Drift of Memes Over Time"
+        if visible_groups is not None:
+            title += f" (Visible Groups: {', '.join(map(str, visible_groups))})"
+        else:
+             title += " (All Groups)"
+        plt.title(title)
         plt.axis('off')
         plt.tight_layout()
 
-        output_file = self.vis_dir / "semantic_drift_trails.png"
+        # Use pathlib for path construction if possible
+        # output_file = self.vis_dir / "semantic_drift_trails.png"
+        # Assuming self.vis_dir is string for now:
+        import os
+        output_file = os.path.join(self.vis_dir, "semantic_drift_trails.png")
+
         try:
-            plt.savefig(output_file, bbox_inches='tight', dpi=self.vis_config['dpi'])
+            # Use configuration for DPI
+            dpi = self.vis_config.get('dpi', 150)
+            plt.savefig(output_file, bbox_inches='tight', dpi=dpi)
             logger.info(f"Saved semantic drift visualization to {output_file}")
         except Exception as e:
             logger.error(f"Failed to save semantic drift visualization {output_file}: {e}")
-        plt.close()
+        finally:
+             # Always close the plot to free memory
+            plt.close()
