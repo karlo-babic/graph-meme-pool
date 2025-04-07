@@ -49,6 +49,10 @@ def setup_logging(config):
 
 
 
+
+start_time = time.time()
+
+
 # Load Configuration
 config = load_config("config.yaml") # Use default name
 
@@ -84,3 +88,11 @@ visualizer = Visualizer(graph_manager, config)
 
 
 visualizer.draw_semantic_drift(num_generations=-1)
+
+
+
+
+end_time = time.time()
+total_time = end_time - start_time
+logger.info(f"--- Visualization Finished ---")
+logger.info(f"Total execution time: {total_time:.2f} seconds")
