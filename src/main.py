@@ -66,9 +66,26 @@ if __name__ == "__main__":
     evolution_engine = None
     visualizer = None
 
-    try:
-        graph_manager = GraphManager(config)
 
+    # Create or Load Initial Graph
+    graph_manager = GraphManager(config)
+    graph_base_name = config['paths']['graph_basename']
+    graph_load_path = Path(config['paths']['graph_save_dir']) / f"{graph_base_name}.json"
+
+    if graph_load_path.exists():
+        logger.info(f"Attempting to load existing graph from {graph_load_path}")
+        try:
+            graph_manager.load_graph(graph_base_name)
+            # TODO: Decide if I want to load propagation history too if it exists
+        except Exception as e:
+            logger.error(f"Failed to load graph: {e}. Creating a new graph instead.")
+            graph_manager.create_graph()
+    else:
+        logger.info("No existing graph found. Creating a new graph.")
+        graph_manager.create_graph()
+
+
+    try:
         # Always load LLM Service (needed for mutate/merge)
         logger.info("Initializing LLM Service...")
         llm_service = LLMService(config)
@@ -104,22 +121,6 @@ if __name__ == "__main__":
     except Exception as e:
         logger.critical(f"Failed to initialize components: {e}", exc_info=True)
         sys.exit(1)
-
-    # Create or Load Initial Graph
-    graph_base_name = config['paths']['graph_basename']
-    graph_load_path = Path(config['paths']['graph_save_dir']) / f"{graph_base_name}.json"
-
-    if graph_load_path.exists():
-        logger.info(f"Attempting to load existing graph from {graph_load_path}")
-        try:
-            graph_manager.load_graph(graph_base_name)
-            # TODO: Decide if I want to load propagation history too if it exists
-        except Exception as e:
-            logger.error(f"Failed to load graph: {e}. Creating a new graph instead.")
-            graph_manager.create_graph()
-    else:
-        logger.info("No existing graph found. Creating a new graph.")
-        graph_manager.create_graph()
 
 
     # --- Run Simulation ---

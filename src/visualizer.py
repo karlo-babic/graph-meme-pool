@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import logging
 from pathlib import Path
+from collections import defaultdict
 from typing import Dict, Any, Optional, Tuple, List
 
 from graph_manager import GraphManager
@@ -399,4 +400,88 @@ class Visualizer:
             logger.info(f"Saved score history plot to {filename}")
         except Exception as e:
             logger.error(f"Failed to save score history plot {filename}: {e}")
+        plt.close()
+
+
+
+
+    def draw_semantic_drift(self):
+        """Visualizes semantic drift of memes per node over time using embedding space trajectories."""
+        if not self.embedding_model:
+            logger.warning("Skipping draw_semantic_drift: Embedding model not available.")
+            return
+
+        G = self.graph_manager.graph
+        if G.number_of_nodes() == 0:
+            return
+
+        # Collect all meme histories and associated metadata
+        all_texts = []
+        text_index_map = []  # List of (node_id, timestep)
+        node_groups = {}     # node_id -> group
+
+        for node_id in G.nodes():
+            data = self.graph_manager.get_node_data(node_id)
+            if data and data.history:
+                for t, meme in enumerate(data.history):
+                    all_texts.append(meme)
+                    text_index_map.append((node_id, t))
+                node_groups[node_id] = data.group if data.group is not None else 0
+
+        # Compute all embeddings
+        all_embeddings = emb_utils.calculate_sentence_embeddings(all_texts, self.embedding_model)
+        if all_embeddings.size == 0:
+            logger.error("Failed to calculate embeddings for draw_semantic_drift. Skipping plot.")
+            return
+
+        # Reduce to 2D using t-SNE
+        embeddings_dict = {i: emb for i, emb in enumerate(all_embeddings)}
+        reduced_2d = emb_utils.reduce_dimensions_tsne(embeddings_dict, random_state=42)
+        if not reduced_2d:
+            logger.error("Failed to reduce embedding dimensions for draw_semantic_drift. Skipping plot.")
+            return
+
+        # Organize by node for plotting
+        node_trails = defaultdict(list)      # node_id -> list of (x, y)
+        node_timesteps = defaultdict(list)   # node_id -> list of timestep (used for alpha)
+        for i, (node_id, timestep) in enumerate(text_index_map):
+            if i in reduced_2d:
+                node_trails[node_id].append(reduced_2d[i])
+                node_timesteps[node_id].append(timestep)
+
+        # Set up colormap for clusters
+        unique_groups = sorted(set(node_groups.values()))
+        cmap = plt.cm.get_cmap('tab10', len(unique_groups))
+        group_to_color = {g: cmap(i) for i, g in enumerate(unique_groups)}
+
+        # Plotting
+        plt.figure(figsize=(15, 15))
+        for node_id, trail in node_trails.items():
+            group = node_groups.get(node_id, 0)
+            color = group_to_color.get(group, (0.5, 0.5, 0.5))
+
+            timesteps = node_timesteps[node_id]
+            n = len(trail)
+            for i in range(n - 1):
+                x1, y1 = trail[i]
+                x2, y2 = trail[i + 1]
+                alpha = (i + 1) / (n - 1) if n > 1 else 1.0
+                plt.plot([x1, x2], [y1, y2],
+                        color=color,
+                        alpha=alpha,
+                        linewidth=1.5)
+            for i, (x, y) in enumerate(trail):
+                alpha = (i + 1) / n if n > 1 else 1.0
+                plt.scatter(x, y, color=color, alpha=alpha, s=10)
+
+        plt.title("Semantic Drift of Memes Over Time (Colored by Cluster)")
+        plt.axis('off')
+        plt.tight_layout()
+
+        output_file = self.vis_dir / "semantic_drift_trails.png"
+        try:
+            plt.savefig(output_file, bbox_inches='tight', dpi=self.vis_config['dpi'])
+            logger.info(f"Saved semantic drift visualization to {output_file}")
+        except Exception as e:
+            logger.error(f"Failed to save semantic drift visualization {output_file}: {e}")
         plt.close()

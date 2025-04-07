@@ -31,6 +31,45 @@ class EvolutionEngine:
         elif not self.fitness_model_huggingpath and not self.llm_service:
              logger.critical("EvolutionEngine initialized for 'llm' fitness type, but no LLMService instance provided. Scoring will fail.")
              raise ValueError("LLMService instance is required for 'llm' fitness model type.")
+        
+        # Calculate average initial word count for penalty
+        self.avg_initial_word_count: Optional[float] = self._calculate_avg_initial_word_count()
+        if self.avg_initial_word_count is None:
+            logger.warning("Could not determine average initial word count. Word count penalty will be disabled.")
+
+    def _calculate_avg_initial_word_count(self) -> Optional[float]:
+        """Calculates the average word count of the initial memes in the graph."""
+        initial_memes = []
+        try:
+            all_nodes_data = self.graph_manager.get_all_nodes_data()
+            if not all_nodes_data:
+                 logger.warning("Cannot calculate average initial word count: No nodes found.")
+                 return None
+
+            for node_id, data in all_nodes_data.items():
+                 if data:
+                    # Use history[0] if available as the definitive initial state
+                    initial_meme = data.history[0] if data.history else data.current_meme
+                    if initial_meme and isinstance(initial_meme, str): # Ensure it's a non-empty string
+                        initial_memes.append(initial_meme)
+                    # else: logger.debug(f"Node {node_id} has no valid initial meme for word count.")
+
+        except Exception as e:
+             logger.error(f"Error accessing initial node data for word count: {e}", exc_info=True)
+             return None # Cannot calculate safely
+
+        if not initial_memes:
+            logger.warning("Cannot calculate average initial word count: No valid initial memes found.")
+            return None # No initial memes found
+
+        word_counts = [len(meme.split()) for meme in initial_memes]
+        if not word_counts:
+             logger.warning("Cannot calculate average initial word count: Could not count words in any initial meme.")
+             return None
+
+        average = sum(word_counts) / len(word_counts)
+        logger.info(f"Calculated average initial word count: {average:.2f} from {len(initial_memes)} memes.")
+        return average
 
     def _score_memes(self, memes: List[str]) -> List[Optional[float]]:
         """Scores memes using the method specified in the config, handling uniqueness."""
@@ -57,11 +96,37 @@ class EvolutionEngine:
                 logger.error("LLMService ('llm') selected but not available. Returning None scores.")
                 unique_scores = {meme: None for meme in unique_memes}
 
+        # --- START: Apply word count penalty ---
+        if self.avg_initial_word_count is not None:
+            logger.debug(f"Applying word count penalty relative to avg: {self.avg_initial_word_count:.2f}")
+            penalized_scores = {}
+            for meme, raw_score in unique_scores.items():
+                # Only apply penalty to valid, non-NaN scores
+                if raw_score is not None and not np.isnan(raw_score) and isinstance(meme, str) and meme:
+                    try:
+                        word_count = len(meme.split())
+                        diff = abs(word_count - self.avg_initial_word_count)
+                        # Penalty function
+                        penalty_factor = np.exp(-0.01 * (diff**2))
+                        penalized_score = raw_score * penalty_factor
+                        # Optional: Log detailed penalty effect for debugging
+                        # logger.debug(f"Meme '{meme[:20]}...' WC:{word_count}, Diff:{diff:.1f}, PenaltyFactor:{penalty_factor:.3f}, RawScore:{raw_score:.3f}, PenalizedScore:{penalized_score:.3f}")
+                        penalized_scores[meme] = penalized_score
+                    except Exception as e:
+                         logger.warning(f"Error applying penalty to meme '{meme[:50]}...': {e}. Using raw score.", exc_info=False)
+                         penalized_scores[meme] = raw_score # Fallback to raw score on error
+                else:
+                    # Keep None, NaN, or invalid meme scores as they are
+                    penalized_scores[meme] = raw_score
+            unique_scores = penalized_scores # Update the dictionary with penalized scores
+        else:
+             logger.debug("Skipping word count penalty as average initial word count is not available.")
+        # --- END: Apply word count penalty ---
+
         # Map scores back to the original list
         final_scores = [unique_scores.get(meme) for meme in memes]
         return final_scores
     
-
     def initialize_scores(self):
         """Scores the initial memes present in the graph if they haven't been scored, using the configured fitness model."""
         all_nodes_data = self.graph_manager.get_all_nodes_data()
