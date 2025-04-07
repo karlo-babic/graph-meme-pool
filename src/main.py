@@ -65,8 +65,8 @@ if __name__ == "__main__":
     fitness_model_instance = None
     evolution_engine = None
     visualizer = None
-
-
+    start_generation_index = 0 # Default for new simulation
+    
     # Create or Load Initial Graph
     graph_manager = GraphManager(config)
     graph_base_name = config['paths']['graph_basename']
@@ -76,13 +76,17 @@ if __name__ == "__main__":
         logger.info(f"Attempting to load existing graph from {graph_load_path}")
         try:
             graph_manager.load_graph(graph_base_name)
+            start_generation_index = graph_manager.loaded_last_generation + 1
+            logger.info(f"Resuming simulation from generation index {start_generation_index}")
             # TODO: Decide if I want to load propagation history too if it exists
         except Exception as e:
             logger.error(f"Failed to load graph: {e}. Creating a new graph instead.")
             graph_manager.create_graph()
+            start_generation_index = 0 # Reset for new graph
     else:
         logger.info("No existing graph found. Creating a new graph.")
         graph_manager.create_graph()
+        start_generation_index = 0 # Reset for new graph
 
 
     try:
@@ -124,31 +128,42 @@ if __name__ == "__main__":
 
 
     # --- Run Simulation ---
+    last_completed_gen_in_run = -1
     try:
-        # Check and potentially mutate initial uniform state
-        evolution_engine.mutate_initial_if_all_same()
+        if start_generation_index == 0:
+            logger.info("Performing initial setup actions for new simulation.")
+            # Check and potentially mutate initial uniform state
+            evolution_engine.mutate_initial_if_all_same()
 
-        # Initial visualization (optional)
-        if config['simulation']['initial_score']:
-            logger.info("Performing initial scoring before simulation run...")
-            evolution_engine.initialize_scores() # Uses configured scoring method
-            # Visualize state *after* initial scoring
-            # Check if visualizer was successfully initialized
-            if visualizer:
-                if config['visualization']['draw_score_per_gen']:
-                    visualizer.draw_score(generation=0) # Label as gen 0
-                if config['visualization']['draw_change_per_gen']:
-                    visualizer.draw_change(generation=0) # Label as gen 0
-                if config['visualization']['draw_semantic_diff_per_gen']:
-                    visualizer.draw_semantic_difference(generation=0) # Label as gen 0
-            else:
-                logger.warning("Visualizer not initialized, skipping initial visualizations.")
+            # Initial visualization (optional)
+            if config['simulation']['initial_score']:
+                logger.info("Performing initial scoring before simulation run...")
+                evolution_engine.initialize_scores()
+                if visualizer:
+                    vis_gen_label = start_generation_index
+                    if config['visualization']['draw_score_per_gen']:
+                        visualizer.draw_score(generation=vis_gen_label)
+                    if config['visualization']['draw_change_per_gen']:
+                        visualizer.draw_change(generation=vis_gen_label, history_lookback=4)
+                    if config['visualization']['draw_semantic_diff_per_gen']:
+                        visualizer.draw_semantic_difference(generation=vis_gen_label)
+                else:
+                    logger.warning("Visualizer not initialized, skipping initial visualizations.")
+        else:
+            logger.info(f"Skipping initial setup (mutate_all, initial_score) as simulation resumes from generation {start_generation_index + 1}.")
 
 
         logger.info("Starting evolution loop...")
-        simulation_generator = evolution_engine.run_simulation()
+        num_generations_to_run_config = config['simulation']['generations']
+        if num_generations_to_run_config <= 0:
+            logger.warning("Configured number of generations to run is <= 0. No simulation steps will execute.")
+            simulation_generator = iter([]) # Empty iterator
+        else:
+            logger.info(f"Starting evolution loop to run {num_generations_to_run_config} generations...")
+            simulation_generator = evolution_engine.run_simulation(start_generation_index=start_generation_index)
 
         for completed_generation_index in simulation_generator:
+            last_completed_gen_in_run = completed_generation_index
             # Per-generation visualization calls controlled here
             if visualizer:
                 generation_num_for_vis = completed_generation_index + 1
@@ -163,11 +178,11 @@ if __name__ == "__main__":
 
     except Exception as e:
         logger.critical(f"Simulation failed during execution: {e}", exc_info=True)
-        # Save state even if simulation fails mid-way?
+        # Save state even if simulation fails mid-way
         if graph_manager:
             logger.info("Attempting to save graph state after error...")
             try:
-                graph_manager.save_graph(graph_base_name + "_error_state")
+                graph_manager.save_graph(graph_base_name + "_error_state", last_completed_generation=last_completed_gen_in_run)
                 graph_manager.save_propagation_history(graph_base_name + "_error_state_propagation")
             except Exception as save_err:
                 logger.error(f"Could not save error state: {save_err}")
@@ -195,7 +210,7 @@ if __name__ == "__main__":
     if graph_manager: # Check if initialized
         logger.info("Saving final graph state and propagation history...")
         try:
-            graph_manager.save_graph(graph_base_name)
+            graph_manager.save_graph(graph_base_name, last_completed_generation=last_completed_gen_in_run)
             graph_manager.save_propagation_history() # Saves with default naming convention
         except Exception as final_save_err:
             logger.error(f"Failed to save final graph state/history: {final_save_err}")

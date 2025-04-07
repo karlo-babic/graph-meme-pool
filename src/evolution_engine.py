@@ -441,36 +441,38 @@ class EvolutionEngine:
             return False
         
 
-    def step(self, generation: int) -> int:
+    def step(self, generation_index: int) -> None:
         """Performs one full generation step: propagate, process."""
-        logger.info(f"--- Starting Generation {generation} ---")
-        
-        self._propagate_memes(generation)
-        self._process_received_memes(generation)
+        logger.info(f"--- Starting Generation {generation_index} ---")
 
-        logger.info(f"--- Finished Generation {generation} ---")
+        self._propagate_memes(generation_index)
+        self._process_received_memes(generation_index)
+
+        logger.info(f"--- Finished Generation {generation_index} ---")
 
 
-    def run_simulation(self):
-        """Runs the full simulation loop."""
-        num_generations = self.config['generations']
-        logger.info(f"Starting simulation for {num_generations} generations.")
+    def run_simulation(self, start_generation_index: int = 0):
+        """Runs the simulation loop for a configured number of generations,
+        starting from start_generation_index."""
+        num_generations_to_run = self.config['generations']
+        end_generation_index = start_generation_index + num_generations_to_run
+        logger.info(f"Starting simulation run from generation {start_generation_index} up to {end_generation_index-1}.")
 
         # --- Main Evolution Loop ---
-        last_completed_generation = -1
+        last_completed_generation_index = start_generation_index - 1
         logger.info("Starting main evolution loop...")
-        for gen in range(num_generations):
+        for current_gen_index in range(start_generation_index, end_generation_index):
             try:
-                self.step(gen)
-                last_completed_generation = gen
+                self.step(current_gen_index)
+                last_completed_generation_index = current_gen_index
 
                 # Yield the index of the completed generation for external processing (like visualization)
-                yield last_completed_generation
+                yield last_completed_generation_index
 
             except Exception as e:
-                logger.error(f"Error during generation {gen + 1}: {e}", exc_info=True)
+                logger.error(f"Error during generation {current_gen_index + 1}: {e}", exc_info=True)
                 logger.warning("Simulation stopped due to error.")
                 break # Stop simulation on error
 
-        logger.info(f"Simulation finished after {last_completed_generation + 1} completed generations.")
-        return last_completed_generation + 1  # Return number of completed generations
+        logger.info(f"Simulation loop finished normally after generation {last_completed_generation_index + 1}.")
+        return last_completed_generation_index + 1  # Return number of completed generations

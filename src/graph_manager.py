@@ -21,6 +21,7 @@ class GraphManager:
         self.random_seed = config['seed']
         random.seed(self.random_seed)
         self.assignment_strategy = config['graph_generation']['initial_meme_assignment']
+        self.loaded_last_generation: int = -1
         logger.info(f"Initial meme assignment strategy: '{self.assignment_strategy}'")
 
     def _load_initial_memes(self) -> List[str]:
@@ -268,7 +269,7 @@ class GraphManager:
                         G.add_edge(v, u, weight=weight)
 
 
-    def save_graph(self, filename: Optional[str] = None):
+    def save_graph(self, filename: Optional[str] = None, last_completed_generation: int = -1):
         """Saves the graph state to a JSON file."""
         if filename is None:
             filename = self.config['paths']['graph_basename']
@@ -276,6 +277,10 @@ class GraphManager:
         filepath = save_dir / f"{filename}.json"
 
         try:
+            # Store the last completed generation index directly in the graph attributes
+            self.graph.graph['last_completed_generation'] = last_completed_generation
+            logger.info(f"Saving graph state completed up to generation index: {last_completed_generation}")
+
             # Get node-link data structure
             serializable_data = json_graph.node_link_data(self.graph)
 
@@ -332,6 +337,7 @@ class GraphManager:
 
     def load_graph(self, filename: Optional[str] = None):
         """Loads the graph state from a JSON file."""
+        self.loaded_last_generation = -1 # Reset before loading
         if filename is None:
             filename = self.config['paths']['graph_basename']
         load_dir = Path(self.config['paths']['graph_save_dir'])
@@ -364,8 +370,10 @@ class GraphManager:
 
 
             self.graph = json_graph.node_link_graph(data, directed=True, multigraph=False)
+            self.loaded_last_generation = self.graph.graph.get('last_completed_generation', -1)
             logger.info(f"Graph loaded successfully from {filepath}")
             logger.info(f"Loaded graph has {self.graph.number_of_nodes()} nodes and {self.graph.number_of_edges()} edges.")
+            logger.info(f"Loaded graph metadata indicates completion up to generation index: {self.loaded_last_generation}")
             # Optionally load propagation history if saved separately
         except FileNotFoundError:
             logger.error(f"Graph file not found: {filepath}")

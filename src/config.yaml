@@ -17,7 +17,7 @@ graph_generation:
     inter_p: 0.1 # Probability of inter-group connection (for small_worlds)
 
 simulation:
-  generations: 50
+  generations: 4
   threshold: 0.2  # Score ratio threshold for merge/mutate/keep decision
   initial_score: true  # Whether to score initial memes before first generation
   fitness_model_huggingpath: 'cardiffnlp/twitter-roberta-base-sentiment-latest'  # path to a model on huggingface (e.g. 'cardiffnlp/twitter-roberta-base-sentiment-latest'), or empty string ('') -> using LLM with prompt_score below
