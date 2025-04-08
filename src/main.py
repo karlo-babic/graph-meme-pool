@@ -199,6 +199,8 @@ if __name__ == "__main__":
         if config['visualization']['plot_final_score_history']:
             logger.info("Generating final score history plot...")
             visualizer.plot_score_history_bygroup()
+        logger.info("Generating semantic centroid drift plots...")
+        visualizer.draw_semantic_centroid_drift(num_generations=-1)
         # Add calls to other final visualizations if needed
         # visualizer.draw_score() # Final score plot without generation number
         # visualizer.draw_change(generation=evolution_engine.config['generations'], history_lookback=10) # Final change plot
