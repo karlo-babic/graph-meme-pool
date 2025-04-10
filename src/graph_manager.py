@@ -259,13 +259,13 @@ class GraphManager:
                 for u in valid_nodes_i:
                     if random.random() < inter_p:
                         v = random.choice(valid_nodes_j)
-                        weight = round(random.uniform(0.3, 0.95), 2)  # 0.05, 0.3
+                        weight = round(random.uniform(0.1, 0.6), 2)  # 0.05, 0.3
                         G.add_edge(u, v, weight=weight)
 
                 for v in valid_nodes_j:
                     if random.random() < inter_p:
                         u = random.choice(valid_nodes_i)
-                        weight = round(random.uniform(0.3, 0.95), 2)
+                        weight = round(random.uniform(0.1, 0.6), 2)
                         G.add_edge(v, u, weight=weight)
 
 

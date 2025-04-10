@@ -140,7 +140,7 @@ if __name__ == "__main__":
                 evolution_engine.initialize_scores()
                 if visualizer:
                     vis_gen_label = start_generation_index
-                    if config['visualization']['draw_score_per_gen']:
+                    if True: #config['visualization']['draw_score_per_gen']:
                         visualizer.draw_score(generation=vis_gen_label)
                     if config['visualization']['draw_change_per_gen']:
                         visualizer.draw_change(generation=vis_gen_label, history_lookback=4)
@@ -208,9 +208,12 @@ if __name__ == "__main__":
         if config['visualization']['plot_final_score_history']:
             logger.info("Generating final score history plot...")
             visualizer.plot_score_history_bygroup()
-        logger.info("Generating semantic centroid drift plots...")
-        visualizer.plot_semantic_centroid_distance_drift()
-        visualizer.draw_semantic_drift(num_generations=-1)
+        if config['visualization']['plot_semantic_drift']:
+            logger.info("Generating semantic drift plots...")
+            visualizer.draw_semantic_drift()
+        if config['visualization']['plot_semantic_centroid_distance_drift']:
+            logger.info("Generating semantic centroid drift plots...")
+            visualizer.plot_semantic_centroid_distance_drift()
         # Add calls to other final visualizations if needed
         # visualizer.draw_score() # Final score plot without generation number
         # visualizer.draw_change(generation=evolution_engine.config['generations'], history_lookback=10) # Final change plot
