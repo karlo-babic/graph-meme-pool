@@ -88,8 +88,8 @@ visualizer = Visualizer(graph_manager, config)
 
 
 #visualizer.draw_semantic_drift(num_generations=-1)
-visualizer.draw_semantic_centroid_drift(num_generations=-1)
-
+visualizer.plot_semantic_centroid_distance_drift()
+#visualizer.generate_centroid_closest_meme_table()
 
 
 

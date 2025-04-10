@@ -191,6 +191,15 @@ if __name__ == "__main__":
     # --- Final Actions ---
     logger.info("Performing final actions...")
 
+    # Save Final Graph State and History
+    if graph_manager: # Check if initialized
+        logger.info("Saving final graph state and propagation history...")
+        try:
+            graph_manager.save_graph(graph_base_name, last_completed_generation=last_completed_gen_in_run)
+            graph_manager.save_propagation_history() # Saves with default naming convention
+        except Exception as final_save_err:
+            logger.error(f"Failed to save final graph state/history: {final_save_err}")
+
     # Final Visualizations
     if visualizer: # Check if initialized
         if config['visualization']['draw_final_embs']:
@@ -200,21 +209,13 @@ if __name__ == "__main__":
             logger.info("Generating final score history plot...")
             visualizer.plot_score_history_bygroup()
         logger.info("Generating semantic centroid drift plots...")
-        visualizer.draw_semantic_centroid_drift(num_generations=-1)
+        visualizer.plot_semantic_centroid_distance_drift()
+        visualizer.draw_semantic_drift(num_generations=-1)
         # Add calls to other final visualizations if needed
         # visualizer.draw_score() # Final score plot without generation number
         # visualizer.draw_change(generation=evolution_engine.config['generations'], history_lookback=10) # Final change plot
     else:
         logger.warning("Visualizer not initialized, skipping final visualizations.")
-
-    # Save Final Graph State and History
-    if graph_manager: # Check if initialized
-        logger.info("Saving final graph state and propagation history...")
-        try:
-            graph_manager.save_graph(graph_base_name, last_completed_generation=last_completed_gen_in_run)
-            graph_manager.save_propagation_history() # Saves with default naming convention
-        except Exception as final_save_err:
-            logger.error(f"Failed to save final graph state/history: {final_save_err}")
 
     end_time = time.time()
     total_time = end_time - start_time

@@ -4,6 +4,7 @@ import numpy as np
 import logging
 from pathlib import Path
 from collections import defaultdict
+import csv
 from typing import Dict, Any, Optional, Tuple, List
 
 from PIL import Image
@@ -243,7 +244,7 @@ class Visualizer:
         # Colors based on group
         unique_groups = sorted(list(set(groups)))
         num_groups = len(unique_groups)
-        cmap = plt.cm.get_cmap('viridis', num_groups) # Or 'tab10', 'tab20'
+        cmap = plt.cm.get_cmap('Spectral', num_groups) # Or 'Spectral', 'tab20'
         group_to_color_val = {group: i / (num_groups - 1) if num_groups > 1 else 0.5 for i, group in enumerate(unique_groups)}
         node_color_values = [group_to_color_val[groups[i]] for i in range(len(node_ids_ordered))]
 
@@ -375,7 +376,7 @@ class Visualizer:
         # Plotting
         plt.figure(figsize=(12, 7))
         num_groups = len(avg_scores)
-        colors = plt.cm.get_cmap("viridis", num_groups)
+        colors = plt.cm.get_cmap("Spectral", num_groups)
 
         for i, (group, avg_history) in enumerate(sorted(avg_scores.items())): # Sort by group ID
              # Find first non-NaN index to start plotting from
@@ -480,7 +481,7 @@ class Visualizer:
         if not unique_groups:
              logger.warning("Skipping draw_semantic_drift: No groups found for nodes.")
              return
-        cmap = plt.cm.get_cmap('tab10', len(unique_groups))
+        cmap = plt.cm.get_cmap('Spectral', len(unique_groups))
         group_to_color = {g: cmap(i) for i, g in enumerate(unique_groups)}
 
         # Convert visible_groups to a set for efficient lookup, if provided
@@ -532,7 +533,7 @@ class Visualizer:
         if visible_groups is not None:
             title += f" (Visible Groups: {', '.join(map(str, visible_groups))})"
         else:
-             title += " (All Groups)"
+             title += ""
         plt.title(title)
         plt.axis('off')
         plt.tight_layout()
@@ -555,22 +556,29 @@ class Visualizer:
             plt.close()
 
 
-    def draw_semantic_centroid_drift(self, num_generations: int = -1, visible_groups: Optional[List[Any]] = None):
+    def draw_semantic_drift(self, num_generations: int = -1, visible_groups: Optional[List[Any]] = None, min_size=5, max_size=2000, min_alpha=0.1, max_alpha=1.0):
         """
         Visualizes semantic drift generation by generation. Centroids are calculated
-        pre-tSNE. The plot is saved after each generation containing visible data is added.
+        pre-tSNE. Centroid size/alpha reflect the standard deviation of constituent node
+        embeddings (pre-tSNE). Higher std dev -> larger size, lower alpha.
+        Individual points are also plotted with time-based alpha.
+        The plot is saved after each generation containing visible data is added.
 
         Args:
             num_generations (int): Max history steps. Defaults to -1 (all).
             visible_groups (Optional[List[Any]]): Groups to display. Defaults to None (all).
+            min_size (int): Minimum marker size for centroids.
+            max_size (int): Maximum marker size for centroids.
+            min_alpha (float): Minimum marker alpha (opacity) for centroids.
+            max_alpha (float): Maximum marker alpha (opacity) for centroids.
         """
         if not self.embedding_model:
-            logger.warning("Skipping draw_semantic_centroid_drift: Embedding model not available.")
+            logger.warning("Skipping draw_semantic_drift: Embedding model not available.")
             return
 
         G = self.graph_manager.graph
         if G.number_of_nodes() == 0:
-            logger.warning("Skipping draw_semantic_centroid_drift: Graph has no nodes.")
+            logger.warning("Skipping draw_semantic_drift: Graph has no nodes.")
             return
 
         # 1. Collect Data, Calculate & Store Embeddings ONCE
@@ -606,227 +614,7 @@ class Visualizer:
                 if current_max_t > max_timestep_overall: max_timestep_overall = current_max_t
 
         if not all_individual_embeddings_collected:
-             logger.warning("Skipping draw_semantic_centroid_drift: No embeddings generated.")
-             return
-
-        # 2. Calculate High-Dimensional Centroids
-        centroid_embeddings_high_dim = {}
-        centroid_metadata = []
-        logger.info("Calculating high-dimensional group centroids per timestep...")
-        centroid_start_idx = len(all_individual_embeddings_collected)
-        current_centroid_idx = centroid_start_idx
-        for group, timesteps_data in group_timestep_embeddings.items():
-            for timestep, embeddings_list in timesteps_data.items():
-                if embeddings_list:
-                    centroid = np.mean(np.array(embeddings_list), axis=0)
-                    centroid_key = (group, timestep)
-                    centroid_embeddings_high_dim[centroid_key] = centroid
-                    centroid_metadata.append({'group': group, 'timestep': timestep, 'id': current_centroid_idx})
-                    current_centroid_idx += 1
-
-        if not centroid_embeddings_high_dim:
-            logger.warning("Skipping draw_semantic_centroid_drift: No centroids calculated.")
-            # Proceed to plot individuals if they exist? Or return? Let's return for now.
-            return
-
-        # 3. Combine Embeddings for t-SNE
-        combined_embeddings_dict = {}
-        for i, emb in enumerate(all_individual_embeddings_collected): combined_embeddings_dict[i] = emb
-        centroid_id_map = {}
-        for meta in centroid_metadata:
-             centroid_key = (meta['group'], meta['timestep'])
-             centroid_id = meta['id']
-             combined_embeddings_dict[centroid_id] = centroid_embeddings_high_dim[centroid_key]
-             centroid_id_map[centroid_key] = centroid_id
-
-        total_items_for_tsne = len(combined_embeddings_dict)
-        logger.info(f"Reducing dimensionality for {total_items_for_tsne} items...")
-
-        # 4. Apply t-SNE
-        reduced_2d = emb_utils.reduce_dimensions_tsne(combined_embeddings_dict, random_state=42)
-        if not reduced_2d:
-            logger.error("Failed to reduce dimensions. Skipping plot.")
-            return
-
-        # 5. Organize 2D Coordinates by Timestep
-        points_by_timestep = defaultdict(lambda: {'individuals': [], 'centroids': {}})
-        # individuals: list of {'x': x, 'y': y, 'group': g}
-        # centroids: dict of {group: (cx, cy)}
-
-        for meta in individual_points_metadata:
-            if meta['id'] in reduced_2d:
-                x, y = reduced_2d[meta['id']]
-                points_by_timestep[meta['timestep']]['individuals'].append({
-                    'x': x, 'y': y, 'group': meta['group']
-                })
-        for meta in centroid_metadata:
-            if meta['id'] in reduced_2d:
-                points_by_timestep[meta['timestep']]['centroids'][meta['group']] = reduced_2d[meta['id']]
-
-        # 6. Plotting Setup
-        all_possible_groups = sorted(list(set(node_group_map.values())))
-        if not all_possible_groups:
-             logger.warning("Skipping plot: No groups defined.")
-             return
-        cmap = plt.cm.get_cmap('tab10', max(10, len(all_possible_groups)))
-        group_to_color = {g: cmap(i % cmap.N) for i, g in enumerate(all_possible_groups)}
-        visible_groups_set = set(visible_groups) if visible_groups is not None else None
-        dpi = self.vis_config.get('dpi', 150)
-        # Use a temporary filename pattern for generation steps, final save overwrites
-        output_file = self.vis_dir / "semantic_drift_centroids.png"
-        # Define base filename for multi-file output if desired later
-        # output_file_base = self.vis_dir / "semantic_drift_gen"
-
-        # 7. Plotting Execution - Generation by Generation
-        logger.info(f"Plotting drift generation by generation up to timestep {max_timestep_overall}...")
-        fig, ax = plt.subplots(figsize=(15, 15))
-        ax.axis('off') # Turn off axis once
-
-        # Store previous centroid positions to draw connecting lines
-        prev_centroids_2d = defaultdict(dict) # group -> timestep -> (cx, cy)
-
-        plotted_anything_ever = False
-        for t in range(max_timestep_overall + 1):
-            data_for_timestep = points_by_timestep.get(t)
-            if not data_for_timestep: continue # Skip if no data for this timestep
-
-            centroids_t = data_for_timestep.get('centroids', {})
-            individuals_t = data_for_timestep.get('individuals', [])
-            plotted_in_this_gen = False
-
-            # Plot Centroids for timestep 't' and connect to 't-1'
-            for group, (cx, cy) in centroids_t.items():
-                if visible_groups_set is None or group in visible_groups_set:
-                    color = group_to_color.get(group, (0.5, 0.5, 0.5))
-                    alpha_val = (t + 1) / (max_timestep_overall + 1) if max_timestep_overall > 0 else 1.0
-
-                    # Plot centroid marker
-                    ax.scatter(cx, cy, color=color, alpha=min(1.0, max(0.3, alpha_val)), s=60, marker='o', edgecolors='black', linewidth=0.5, zorder=5)
-                    plotted_in_this_gen = True
-
-                    # Plot connecting line from previous timestep's centroid if it exists
-                    if t > 0 and group in prev_centroids_2d.get(t-1, {}):
-                        prev_cx, prev_cy = prev_centroids_2d[t-1][group]
-                        prev_alpha = t / (max_timestep_overall + 1) if max_timestep_overall > 0 else 1.0 # Alpha based on start of line
-                        ax.plot([prev_cx, cx], [prev_cy, cy], color=color, alpha=min(1.0, max(0.2, prev_alpha * 0.9)), linewidth=1.5)
-
-            # Plot Individual points for timestep 't'
-            for point_data in individuals_t:
-                 group = point_data['group']
-                 if visible_groups_set is None or group in visible_groups_set:
-                     color = group_to_color.get(group, (0.5, 0.5, 0.5))
-                     alpha_val = (t + 1) / (max_timestep_overall + 1) if max_timestep_overall > 0 else 1.0
-                     ax.scatter(point_data['x'], point_data['y'], color=color, alpha=min(1.0, max(0.05, alpha_val * 0.3)), s=8, edgecolors='none')
-                     plotted_in_this_gen = True
-
-            # Update previous centroids *after* potentially drawing lines
-            if centroids_t:
-                prev_centroids_2d[t] = centroids_t.copy() # Store positions for next iteration
-
-            # Save the plot if anything visible was added in this generation
-            if plotted_in_this_gen:
-                plotted_anything_ever = True
-                # Update title dynamically (optional, could set once at the end)
-                visible_group_str = f"(Visible Groups: {', '.join(map(str, sorted(list(visible_groups_set))))})" if visible_groups is not None else "(All Groups)"
-                current_title = f"Semantic Drift - Generation {t}/{max_timestep_overall} {visible_group_str}"
-                ax.set_title(current_title) # Update title each frame
-                fig.tight_layout() # Adjust layout
-
-                # Save - overwrites the single output file each time
-                try:
-                    # Save each gen to a different file:
-                    gen_output_file = self.vis_dir / f"semantic_drift_gen_{t:04d}.png"
-                    fig.savefig(gen_output_file, bbox_inches='tight', dpi=dpi)
-                    logger.info(f"Saved plot for generation {t} to {gen_output_file}")
-
-                    # Overwrite single file:
-                    #fig.savefig(output_file, bbox_inches='tight', dpi=dpi)
-                    #logger.info(f"Saved plot up to generation {t} to {output_file}")
-
-                except Exception as e:
-                    logger.error(f"Failed to save plot for generation {t} to {output_file}: {e}")
-                    plt.close(fig)
-                    return # Stop if saving fails
-
-        if not plotted_anything_ever:
-            logger.warning("No data was plotted based on visibility settings and available timesteps.")
-
-        # Final title update (optional if updated each frame)
-        # visible_group_str = f"(Visible Groups: {', '.join(map(str, sorted(list(visible_groups_set))))})" if visible_groups is not None else "(All Groups)"
-        # final_title = f"Semantic Drift - Final (Generation {max_timestep_overall}) {visible_group_str}"
-        # ax.set_title(final_title)
-        # fig.tight_layout()
-        # try: # Optional final save if title needs updating
-        #      fig.savefig(output_file, bbox_inches='tight', dpi=dpi)
-        #      logger.info(f"Saved final plot state to {output_file}")
-        # except Exception as e:
-        #      logger.error(f"Failed to save final plot state {output_file}: {e}")
-
-        logger.info(f"Finished plotting generation by generation. Final plot at {output_file}")
-
-        # Final Cleanup
-        plt.close(fig)
-
-
-
-    def draw_semantic_centroid_std_drift(self, num_generations: int = -1, visible_groups: Optional[List[Any]] = None, min_size=20, max_size=150, min_alpha=0.3, max_alpha=1.0):
-        """
-        Visualizes semantic drift of group centroids only, generation by generation.
-        Centroid size/alpha reflect the standard deviation of constituent node embeddings
-        (pre-tSNE). Higher std dev -> larger size, lower alpha.
-
-        Args:
-            num_generations (int): Max history steps. Defaults to -1 (all).
-            visible_groups (Optional[List[Any]]): Groups to display. Defaults to None (all).
-            min_size (int): Minimum marker size for centroids.
-            max_size (int): Maximum marker size for centroids.
-            min_alpha (float): Minimum marker alpha (opacity) for centroids.
-            max_alpha (float): Maximum marker alpha (opacity) for centroids.
-        """
-        if not self.embedding_model:
-            logger.warning("Skipping draw_semantic_centroid_std_drift: Embedding model not available.")
-            return
-
-        G = self.graph_manager.graph
-        if G.number_of_nodes() == 0:
-            logger.warning("Skipping draw_semantic_centroid_std_drift: Graph has no nodes.")
-            return
-
-        # 1. Collect Data, Calculate & Store Embeddings ONCE
-        node_group_map = {}
-        group_timestep_embeddings = defaultdict(lambda: defaultdict(list))
-        individual_points_metadata = [] # Still needed for T-SNE context
-        all_individual_embeddings_collected = []
-        max_timestep_overall = 0
-        embedding_idx_counter = 0
-
-        logger.info("Calculating and collecting embeddings...")
-        for node_id in G.nodes():
-            data = self.graph_manager.get_node_data(node_id)
-            if hasattr(data, 'history') and data.history:
-                group = getattr(data, 'group', 0)
-                node_group_map[node_id] = group
-                current_max_t = -1
-                node_texts, node_timesteps = [], []
-                for t, meme in enumerate(data.history):
-                    if num_generations >= 0 and t >= num_generations: break
-                    node_texts.append(str(meme))
-                    node_timesteps.append(t)
-                    current_max_t = t
-                if node_texts:
-                    node_embeddings = emb_utils.calculate_sentence_embeddings(node_texts, self.embedding_model)
-                    if node_embeddings is not None and node_embeddings.size > 0:
-                        for i, embedding in enumerate(node_embeddings):
-                            timestep = node_timesteps[i]
-                            group_timestep_embeddings[group][timestep].append(embedding)
-                            # Collect metadata even if not plotted, needed for T-SNE layout
-                            individual_points_metadata.append({'group': group, 'timestep': timestep, 'id': embedding_idx_counter})
-                            all_individual_embeddings_collected.append(embedding)
-                            embedding_idx_counter += 1
-                if current_max_t > max_timestep_overall: max_timestep_overall = current_max_t
-
-        if not all_individual_embeddings_collected:
-             logger.warning("Skipping draw_semantic_centroid_std_drift: No embeddings generated.")
+             logger.warning("Skipping draw_semantic_drift: No embeddings generated.")
              return
 
         # 2. Calculate High-Dimensional Centroids AND Standard Deviations
@@ -855,8 +643,10 @@ class Visualizer:
                     current_centroid_idx += 1
 
         if not centroid_data_high_dim:
-            logger.warning("Skipping draw_semantic_centroid_std_drift: No centroids calculated.")
-            return
+            logger.warning("Skipping draw_semantic_drift: No centroids calculated.")
+            # Might still plot individuals if they exist, proceed if individuals were collected
+            if not all_individual_embeddings_collected:
+                return # Return if no individuals either
 
         # Calculate min/max std dev for scaling, handle edge case of no variance
         min_std = min(all_std_devs) if all_std_devs else 0.0
@@ -885,87 +675,505 @@ class Visualizer:
             logger.error("Failed to reduce dimensions. Skipping plot.")
             return
 
-        # 5. Organize 2D Centroid Coordinates and link Std Dev
-        centroid_points_by_timestep = defaultdict(dict) # timestep -> group -> (cx, cy, std_dev)
+        # 5. Organize 2D Coordinates by Timestep, Link Std Dev
+        points_by_timestep = defaultdict(lambda: {'individuals': [], 'centroids': {}})
+        # individuals: list of {'x': x, 'y': y, 'group': g}
+        # centroids: dict of {group: (cx, cy, std_dev)}
+
+        for meta in individual_points_metadata:
+            if meta['id'] in reduced_2d:
+                x, y = reduced_2d[meta['id']]
+                points_by_timestep[meta['timestep']]['individuals'].append({
+                    'x': x, 'y': y, 'group': meta['group']
+                })
         for meta in centroid_metadata:
             if meta['id'] in reduced_2d:
                 group, timestep = meta['group'], meta['timestep']
                 centroid_key = (group, timestep)
-                _, std_dev = centroid_data_high_dim[centroid_key]
-                centroid_points_by_timestep[timestep][group] = (*reduced_2d[meta['id']], std_dev)
+                _, std_dev = centroid_data_high_dim.get(centroid_key, (None, 0.0)) # Default std_dev if key somehow missing
+                points_by_timestep[timestep]['centroids'][group] = (*reduced_2d[meta['id']], std_dev)
+
 
         # 6. Plotting Setup
         all_possible_groups = sorted(list(set(node_group_map.values())))
         if not all_possible_groups:
              logger.warning("Skipping plot: No groups defined.")
              return
-        cmap = plt.cm.get_cmap('tab10', max(10, len(all_possible_groups)))
+        cmap = plt.cm.get_cmap('Spectral', max(10, len(all_possible_groups)))
         group_to_color = {g: cmap(i % cmap.N) for i, g in enumerate(all_possible_groups)}
         visible_groups_set = set(visible_groups) if visible_groups is not None else None
         dpi = self.vis_config.get('dpi', 150)
-        output_file = self.vis_dir / "semantic_drift_centroids_std.png"
+        # Use a filename pattern for generation steps
+        output_file_base = self.vis_dir / "semantic_drift_gen" # Base name for frame sequence
 
-        # 7. Plotting Execution - Generation by Generation (Centroids Only)
-        logger.info(f"Plotting centroid drift (std dev mapped to size/alpha) up to timestep {max_timestep_overall}...")
+        # 7. Plotting Execution - Generation by Generation
+        logger.info(f"Plotting drift (Centroid Size/Alpha ~ StdDev) generation by generation up to timestep {max_timestep_overall}...")
         fig, ax = plt.subplots(figsize=(15, 15))
-        ax.axis('off')
+        ax.axis('off') # Turn off axis once
 
-        prev_centroids_2d = defaultdict(dict) # Stores only (cx, cy) for line drawing
+        # Store previous centroid COORDINATES to draw connecting lines
+        prev_centroids_2d_coords = defaultdict(dict) # timestep -> group -> (cx, cy)
+
         plotted_anything_ever = False
-
         for t in range(max_timestep_overall + 1):
-            centroids_t_data = centroid_points_by_timestep.get(t, {})
-            if not centroids_t_data: continue
+            data_for_timestep = points_by_timestep.get(t)
+            if not data_for_timestep: continue # Skip if no data for this timestep
 
+            centroids_t_data = data_for_timestep.get('centroids', {})
+            individuals_t = data_for_timestep.get('individuals', [])
             plotted_in_this_gen = False
-            current_gen_centroids = {} # Store (cx,cy) for this gen to update prev_centroids_2d
+            current_gen_centroid_coords = {} # Store coords for this gen to update prev_centroids_2d_coords
 
+            # Plot Centroids for timestep 't' and connect to 't-1'
             for group, (cx, cy, std_dev) in centroids_t_data.items():
                 if visible_groups_set is None or group in visible_groups_set:
                     color = group_to_color.get(group, (0.5, 0.5, 0.5))
 
                     # Calculate size and alpha based on normalized std dev
+                    # Scale std dev non-linearly (e.g., power) to emphasize differences
                     normalized_std = (std_dev - min_std) / std_range if std_range > 1e-9 else 0.5
-                    size = min_size + normalized_std * (max_size - min_size)
-                    alpha_val = max_alpha - normalized_std * (max_alpha - min_alpha)
-                    alpha_val = np.clip(alpha_val, 0.0, 1.0) # Ensure alpha is valid
+                    # Larger std dev -> larger size (less concentrated)
+                    scaled_norm_std_size = normalized_std ** 5
+                    size = min_size + scaled_norm_std_size * (max_size - min_size)
+                    # Larger std dev -> lower alpha (less concentrated)
+                    scaled_norm_std_alpha = normalized_std ** 5
+                    alpha_val = max_alpha - scaled_norm_std_alpha * (max_alpha - min_alpha)
+                    alpha_val = np.clip(alpha_val, 0.0, 1.0) # Ensure alpha is valid [0, 1]
 
                     # Plot centroid marker with calculated size/alpha
                     ax.scatter(cx, cy, color=color, alpha=alpha_val, s=size, marker='o', edgecolors='black', linewidth=0.5, zorder=5)
                     plotted_in_this_gen = True
-                    current_gen_centroids[group] = (cx, cy) # Store coords for line drawing
+                    current_gen_centroid_coords[group] = (cx, cy) # Store coords for line drawing
 
-                    # Plot connecting line from previous timestep's centroid
-                    if t > 0 and group in prev_centroids_2d.get(t-1, {}):
-                        prev_cx, prev_cy = prev_centroids_2d[t-1][group]
-                        # Line alpha based on time
+                    # Plot connecting line from previous timestep's centroid if it exists
+                    if t > 0 and group in prev_centroids_2d_coords.get(t-1, {}):
+                        prev_cx, prev_cy = prev_centroids_2d_coords[t-1][group]
+                        # Line alpha based on time (start of line) for progression clarity
                         line_alpha = t / (max_timestep_overall + 1) if max_timestep_overall > 0 else 1.0
                         ax.plot([prev_cx, cx], [prev_cy, cy], color=color, alpha=min(1.0, max(0.2, line_alpha * 0.9)), linewidth=1.5)
 
-            # Update previous centroid positions *after* iterating through all groups for the timestep
-            if current_gen_centroids:
-                prev_centroids_2d[t] = current_gen_centroids
+            # Plot Individual points for timestep 't'
+            for point_data in individuals_t:
+                 group = point_data['group']
+                 if visible_groups_set is None or group in visible_groups_set:
+                     color = group_to_color.get(group, (0.5, 0.5, 0.5))
+                     # Use original time-based alpha for individual points
+                     indiv_alpha_val = (t + 1) / (max_timestep_overall + 1) if max_timestep_overall > 0 else 1.0
+                     ax.scatter(point_data['x'], point_data['y'], color=color, alpha=min(1.0, max(0.05, indiv_alpha_val * 0.3)), s=8, edgecolors='none')
+                     plotted_in_this_gen = True # Count individuals as plotting something
+
+            # Update previous centroid coordinates *after* iterating through all groups for the timestep
+            if current_gen_centroid_coords:
+                prev_centroids_2d_coords[t] = current_gen_centroid_coords
 
             # Save the plot if anything visible was added in this generation
             if plotted_in_this_gen:
                 plotted_anything_ever = True
-                visible_group_str = f"(Visible Groups: {', '.join(map(str, sorted(list(visible_groups_set))))})" if visible_groups is not None else "(All Groups)"
-                current_title = f"Centroid Drift (Size/Alpha ~ StdDev) - Gen {t}/{max_timestep_overall} {visible_group_str}"
-                ax.set_title(current_title)
-                fig.tight_layout()
+                # Update title dynamically
+                visible_group_str = f"(Visible Groups: {', '.join(map(str, sorted(list(visible_groups_set))))})" if visible_groups is not None else ""
+                current_title = f"Semantic Drift (Centroid Size/Alpha ~ StdDev) - Gen {t}/{max_timestep_overall} {visible_group_str}"
+                ax.set_title(current_title) # Update title each frame
+                fig.tight_layout() # Adjust layout
 
+                # Save each generation to a different file
+                gen_output_file = self.vis_dir / f"{output_file_base.stem}_{t:04d}.png"
                 try:
-                    fig.savefig(output_file, bbox_inches='tight', dpi=dpi)
-                    logger.info(f"Saved plot up to generation {t} to {output_file}")
+                    fig.savefig(gen_output_file, bbox_inches='tight', dpi=dpi)
+                    logger.info(f"Saved plot for generation {t} to {gen_output_file}")
                 except Exception as e:
-                    logger.error(f"Failed to save plot for generation {t} to {output_file}: {e}")
+                    logger.error(f"Failed to save plot for generation {t} to {gen_output_file}: {e}")
                     plt.close(fig)
-                    return
+                    return # Stop if saving fails
 
         if not plotted_anything_ever:
-            logger.warning("No centroids were plotted based on visibility settings and available timesteps.")
+            logger.warning("No data was plotted based on visibility settings and available timesteps.")
 
-        logger.info(f"Finished plotting std-dev centroid drift. Final plot at {output_file}")
+        # Optional: Create a final composite or just rely on the last saved frame
+        # If a single final file is desired, save it here (potentially overwriting an older version if named identically)
+        # final_output_file = self.vis_dir / "semantic_drift_centroids_std_final.png"
+        # try:
+        #     # Ensure title is final
+        #     visible_group_str = f"(Visible Groups: {', '.join(map(str, sorted(list(visible_groups_set))))})" if visible_groups is not None else ""
+        #     final_title = f"Semantic Drift (Centroid Size/Alpha ~ StdDev) - Final (Gen {max_timestep_overall}) {visible_group_str}"
+        #     ax.set_title(final_title)
+        #     fig.tight_layout()
+        #     fig.savefig(final_output_file, bbox_inches='tight', dpi=dpi)
+        #     logger.info(f"Saved final plot state to {final_output_file}")
+        # except Exception as e:
+        #      logger.error(f"Failed to save final plot state {final_output_file}: {e}")
+
+        logger.info(f"Finished plotting generation by generation. Frame sequence saved with base name '{output_file_base.stem}'")
 
         # Final Cleanup
         plt.close(fig)
+
+
+
+    def plot_semantic_centroid_distance_drift(self, num_generations: int = -1, visible_groups: Optional[List[Any]] = None, relative_group_id: Optional[Any] = None):
+        """
+        Plots the Euclidean distance of each group's centroid over generations.
+        If relative_group_id is None, plots distance to the nearest other group's centroid.
+        If relative_group_id is set, plots distance to that specific group's centroid.
+        Line thickness represents the standard deviation of embeddings within the group.
+
+        Args:
+            num_generations (int): Max history steps. Defaults to -1 (all).
+            visible_groups (Optional[List[Any]]): Groups to display. Defaults to None (all).
+            relative_group_id (Optional[Any]): If set, calculate distance relative to this group. Defaults to None.
+        """
+        if not hasattr(self, 'embedding_model') or not self.embedding_model:
+            logger.warning("Skipping plot_semantic_centroid_distance_drift: Embedding model not available.")
+            return
+        global emb_utils
+        if 'emb_utils' not in globals():
+             logger.error("emb_utils not found. Cannot calculate embeddings.")
+             return
+
+        G = self.graph_manager.graph
+        if G.number_of_nodes() == 0:
+            logger.warning("Skipping plot_semantic_centroid_distance_drift: Graph has no nodes.")
+            return
+
+        node_group_map = {}
+        group_timestep_embeddings = defaultdict(lambda: defaultdict(list))
+        max_timestep_overall = 0
+
+        logger.info("Calculating and collecting embeddings for distance drift...")
+        for node_id in G.nodes():
+            data = self.graph_manager.get_node_data(node_id)
+            if hasattr(data, 'history') and data.history:
+                group = getattr(data, 'group', 0)
+                node_group_map[node_id] = group
+                current_max_t = -1
+                node_texts, node_timesteps = [], []
+                for t, meme in enumerate(data.history):
+                    if num_generations >= 0 and t >= num_generations: break
+                    node_texts.append(str(meme))
+                    node_timesteps.append(t)
+                    current_max_t = t
+                if node_texts:
+                    node_embeddings = emb_utils.calculate_sentence_embeddings(node_texts, self.embedding_model)
+                    if node_embeddings is not None and node_embeddings.size > 0:
+                        for i, embedding in enumerate(node_embeddings):
+                            timestep = node_timesteps[i]
+                            group_timestep_embeddings[group][timestep].append(embedding)
+                if current_max_t > max_timestep_overall: max_timestep_overall = current_max_t
+
+        if not group_timestep_embeddings:
+            logger.warning("Skipping plot_semantic_centroid_distance_drift: No embeddings collected.")
+            return
+
+        centroid_data_high_dim = {}
+        all_std_devs = []
+        logger.info("Calculating high-dimensional centroids and std deviations per timestep...")
+        for group, timesteps_data in group_timestep_embeddings.items():
+            for timestep, embeddings_list in timesteps_data.items():
+                if embeddings_list:
+                    embeddings_array = np.array(embeddings_list)
+                    centroid = np.mean(embeddings_array, axis=0)
+                    if embeddings_array.shape[0] > 1:
+                        std_dev_vector = np.std(embeddings_array, axis=0)
+                        std_dev_scalar = np.mean(std_dev_vector)
+                    else:
+                        std_dev_scalar = 0.0
+
+                    all_std_devs.append(std_dev_scalar)
+                    centroid_key = (group, timestep)
+                    centroid_data_high_dim[centroid_key] = (centroid, std_dev_scalar)
+
+        if not centroid_data_high_dim:
+            logger.warning("Skipping plot_semantic_centroid_distance_drift: No centroids calculated.")
+            return
+
+        min_std = min(all_std_devs) if all_std_devs else 0.0
+        max_std = max(all_std_devs) if all_std_devs else 0.0
+        std_range = max_std - min_std
+        if std_range < 1e-9:
+            std_range = 1.0
+
+        group_centroid_distances = defaultdict(lambda: defaultdict(float))
+        group_stds = defaultdict(lambda: defaultdict(float))
+
+        all_groups = sorted(list(set(g for g, t in centroid_data_high_dim.keys())))
+        if len(all_groups) < 2 and relative_group_id is None:
+             logger.warning("Skipping plot_semantic_centroid_distance_drift: Need at least two groups with centroids to calculate nearest distances.")
+             return
+        if relative_group_id is not None and relative_group_id not in all_groups:
+            logger.error(f"Skipping plot_semantic_centroid_distance_drift: Relative group ID '{relative_group_id}' not found among groups with centroids.")
+            return
+
+        min_distance_overall = float('inf')
+        max_distance_overall = 0.0
+
+        for t in range(max_timestep_overall + 1):
+            centroids_at_timestep = {}
+            stds_at_timestep = {}
+            groups_present_at_t = []
+            for group in all_groups:
+                centroid_key = (group, t)
+                if centroid_key in centroid_data_high_dim:
+                    centroid, std_dev = centroid_data_high_dim[centroid_key]
+                    centroids_at_timestep[group] = centroid
+                    stds_at_timestep[group] = std_dev
+                    groups_present_at_t.append(group)
+
+            if not groups_present_at_t: continue
+
+            relative_centroid_present = False
+            reference_centroid = None
+            if relative_group_id is not None:
+                if relative_group_id in centroids_at_timestep:
+                    reference_centroid = centroids_at_timestep[relative_group_id]
+                    relative_centroid_present = True
+                else:
+                    # If relative group doesn't exist at this timestep, skip calculation for this t
+                    continue
+
+            if relative_group_id is not None and relative_centroid_present:
+                # Calculate distance relative to the specified group
+                for group in groups_present_at_t:
+                    if group == relative_group_id: continue # Skip distance to self
+                    current_centroid = centroids_at_timestep[group]
+                    distance = np.linalg.norm(current_centroid - reference_centroid)
+                    group_centroid_distances[group][t] = distance
+                    group_stds[group][t] = stds_at_timestep[group]
+                    min_distance_overall = min(min_distance_overall, distance)
+                    max_distance_overall = max(max_distance_overall, distance)
+            elif relative_group_id is None:
+                # Calculate distance to nearest other group (original behavior)
+                 if len(groups_present_at_t) < 2: continue # Need >= 2 for nearest calculation
+
+                 for group in groups_present_at_t:
+                    min_distance = float('inf')
+                    current_centroid = centroids_at_timestep[group]
+                    for other_group in groups_present_at_t:
+                        if group != other_group:
+                            other_centroid = centroids_at_timestep[other_group]
+                            distance = np.linalg.norm(current_centroid - other_centroid)
+                            min_distance = min(min_distance, distance)
+
+                    if min_distance != float('inf'):
+                        group_centroid_distances[group][t] = min_distance
+                        group_stds[group][t] = stds_at_timestep[group]
+                        min_distance_overall = min(min_distance_overall, min_distance)
+                        max_distance_overall = max(max_distance_overall, min_distance)
+
+
+        all_possible_groups_with_data = sorted(list(group_centroid_distances.keys()))
+        if not all_possible_groups_with_data:
+             logger.warning("Skipping plot: No distance data calculated (check relative group or number of groups).")
+             return
+
+        unique_groups_overall = sorted(list(set(node_group_map.values())))
+        cmap = plt.cm.get_cmap('Spectral', max(10, len(unique_groups_overall)))
+        group_to_color = {g: cmap(i % cmap.N) for i, g in enumerate(unique_groups_overall)}
+
+        visible_groups_set = set(visible_groups) if visible_groups is not None else None
+        dpi = self.vis_config.get('dpi', 150)
+
+        # Adjust filename and title based on relative_group_id
+        if relative_group_id is not None:
+            output_file = self.vis_dir / f"plot_semantic_centroid_distance_drift_relative_to_{relative_group_id}.png"
+            plot_title = f"Semantic Centroid Distance Drift Relative to Group {relative_group_id}"
+            y_label = f"Distance to Centroid of Group {relative_group_id}"
+        else:
+            output_file = self.vis_dir / "plot_semantic_centroid_distance_drift_nearest.png"
+            plot_title = "Semantic Centroid Distance Drift to Nearest Group"
+            y_label = "Distance to Nearest Other Centroid"
+
+
+        logger.info(f"Plotting centroid distance drift: {plot_title}")
+        fig, ax = plt.subplots(figsize=(15, 10))
+        ax.set_xlabel("Generation")
+        ax.set_ylabel(y_label)
+        ax.set_title(plot_title)
+
+        max_gen_overall = 0
+        plotted_anything = False
+        actual_min_plotted = float('inf')
+        actual_max_plotted = 0.0
+
+        for group in all_possible_groups_with_data:
+            # Skip the relative group itself if it's specified
+            if relative_group_id is not None and group == relative_group_id:
+                continue
+            if visible_groups_set is None or group in visible_groups_set:
+                distances = group_centroid_distances[group]
+                stds = group_stds[group]
+                if distances:
+                    generations = sorted(distances.keys())
+                    if len(generations) < 2: continue
+
+                    distance_values = [distances[gen] for gen in generations]
+                    std_values = [stds.get(gen, 0.0) for gen in generations]
+
+                    current_min = min(distance_values)
+                    current_max = max(distance_values)
+                    actual_min_plotted = min(actual_min_plotted, current_min)
+                    actual_max_plotted = max(actual_max_plotted, current_max)
+                    max_gen_overall = max(max_gen_overall, max(generations) if generations else 0)
+
+                    color = group_to_color.get(group, (0.5, 0.5, 0.5))
+
+                    group_plotted = False
+                    for i in range(len(generations) - 1):
+                        t0, t1 = generations[i], generations[i+1]
+                        # if t1 != t0 + 1: continue # Optional: only plot consecutive steps
+
+                        d0, d1 = distance_values[i], distance_values[i+1]
+                        std_dev0 = std_values[i]
+
+                        normalized_std = (std_dev0 - min_std) / std_range if std_range > 1e-9 else 0.5
+                        linewidth = (1 + normalized_std) ** 3
+                        linewidth = max(0.1, linewidth)
+
+                        segment_label = f"Group {group}" if not group_plotted else None
+                        ax.plot([t0, t1], [d0, d1], label=segment_label, color=color, linewidth=linewidth, alpha=0.5, solid_capstyle='round')
+                        plotted_anything = True
+                        if not group_plotted: group_plotted = True
+
+        if not plotted_anything:
+            logger.warning("No data points were plotted based on visibility settings and available distances.")
+            plt.close(fig)
+            return
+
+        if actual_min_plotted != float('inf') and actual_max_plotted > actual_min_plotted:
+            padding = (actual_max_plotted - actual_min_plotted) * 0.05
+            if padding < 1e-6: padding = 0.1
+            ax.set_ylim(bottom=max(0, actual_min_plotted - padding), top=actual_max_plotted + padding)
+        elif actual_max_plotted >= 0:
+             ax.set_ylim(bottom=0, top=max(1.0, actual_max_plotted * 1.1))
+        else:
+             ax.set_ylim(0, 1)
+
+        if max_gen_overall >= 0:
+             ax.set_xlim(-0.5, max_gen_overall + 0.5)
+        else:
+             ax.set_xlim(-0.5, 0.5)
+
+        handles, labels = ax.get_legend_handles_labels()
+        by_label = dict(zip(labels, handles))
+        if by_label:
+            ax.legend(by_label.values(), by_label.keys())
+
+        ax.grid(True, which='major', linestyle='--', alpha=0.6)
+        fig.tight_layout()
+        try:
+            fig.savefig(output_file, bbox_inches='tight', dpi=dpi)
+            logger.info(f"Saved centroid distance drift plot to {output_file}")
+        except Exception as e:
+            logger.error(f"Failed to save centroid distance drift plot to {output_file}: {e}")
+        finally:
+            plt.close(fig)
+
+        logger.info(f"Finished plotting centroid distance drift.")
+
+
+
+
+    def generate_centroid_closest_meme_table(self, num_generations: int = -1):
+        """
+        Generates a CSV table where rows are generations and columns are groups.
+        Each cell contains the meme text from that generation and group which is
+        semantically closest (Euclidean distance in embedding space) to the
+        centroid of all memes within that group at that specific generation.
+
+        Args:
+            num_generations (int): Max history steps (generations) to include.
+                                   Defaults to -1 (all available generations).
+        """
+        if not hasattr(self, 'embedding_model') or not self.embedding_model:
+            logger.warning("Skipping generate_centroid_closest_meme_table: Embedding model not available.")
+            return
+        global emb_utils
+        if 'emb_utils' not in globals():
+             logger.error("emb_utils not found. Cannot calculate embeddings.")
+             return
+
+        G = self.graph_manager.graph
+        if G.number_of_nodes() == 0:
+            logger.warning("Skipping generate_centroid_closest_meme_table: Graph has no nodes.")
+            return
+
+        # 1. Collect meme texts grouped by (group, timestep)
+        group_timestep_memes = defaultdict(lambda: defaultdict(list))
+        max_timestep_overall = 0
+        logger.info("Collecting memes per group and timestep...")
+        for node_id in G.nodes():
+            data = self.graph_manager.get_node_data(node_id)
+            if hasattr(data, 'history') and data.history:
+                group = getattr(data, 'group', 0) # Default group 0 if not specified
+                for t, meme in enumerate(data.history):
+                    if num_generations >= 0 and t >= num_generations:
+                        break
+                    # Store the meme text directly
+                    group_timestep_memes[group][t].append(str(meme))
+                    max_timestep_overall = max(max_timestep_overall, t)
+
+        if not group_timestep_memes:
+            logger.warning("Skipping generate_centroid_closest_meme_table: No historical meme data found.")
+            return
+
+        # 2. Calculate centroids and find closest meme for each (group, timestep)
+        centroid_closest_memes = defaultdict(dict) # {group: {timestep: closest_meme_text}}
+        logger.info("Calculating centroids and finding closest memes...")
+        for group, timesteps_data in group_timestep_memes.items():
+            for timestep, meme_texts in timesteps_data.items():
+                if not meme_texts:
+                    continue # Skip if no memes for this group/timestep
+
+                # Calculate embeddings for all memes in this cell
+                embeddings = emb_utils.calculate_sentence_embeddings(meme_texts, self.embedding_model)
+
+                if embeddings is None or embeddings.size == 0:
+                    logger.warning(f"Could not calculate embeddings for Group {group}, Timestep {timestep}.")
+                    continue
+
+                # Calculate the centroid
+                centroid = np.mean(embeddings, axis=0)
+
+                # Find the embedding (and corresponding text) closest to the centroid
+                if embeddings.shape[0] == 1:
+                    # If only one meme, it's trivially the closest
+                    closest_idx = 0
+                else:
+                    distances = np.linalg.norm(embeddings - centroid, axis=1)
+                    closest_idx = np.argmin(distances)
+
+                closest_meme_text = meme_texts[closest_idx]
+                centroid_closest_memes[group][timestep] = closest_meme_text
+
+        if not centroid_closest_memes:
+            logger.warning("Skipping generate_centroid_closest_meme_table: No closest memes could be determined (check embeddings).")
+            return
+
+        # 3. Prepare data for CSV output
+        all_groups = sorted(list(centroid_closest_memes.keys()))
+        if not all_groups:
+             logger.warning("Skipping generate_centroid_closest_meme_table: No groups with data found.")
+             return
+
+        header = ["Generation"] + [f"Group_{g}" for g in all_groups]
+        table_data = [header]
+
+        logger.info("Constructing table data...")
+        for t in range(max_timestep_overall + 1):
+            row = [t] # First column is the generation number
+            for group in all_groups:
+                # Get the closest meme text for this group/timestep, or "" if none found
+                cell_value = centroid_closest_memes[group].get(t, "")
+                row.append(cell_value)
+            table_data.append(row)
+
+        # 4. Write to CSV
+        output_file = self.vis_dir / "centroid_closest_memes_table.csv"
+        try:
+            logger.info(f"Writing centroid closest meme table to {output_file}")
+            with open(output_file, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerows(table_data)
+            logger.info(f"Successfully saved centroid closest meme table to {output_file}")
+        except Exception as e:
+            logger.error(f"Failed to write centroid closest meme table to {output_file}: {e}")
+
+        logger.info("Finished generating centroid closest meme table.")
