@@ -146,6 +146,7 @@ class Visualizer:
             data = self.graph_manager.get_node_data(node_id)
             scores.append(data.current_meme_score if data and data.current_meme_score is not None else 0.5) # Default to neutral 0.5
 
+        scores = [2**(4*s)-1 for s in scores]
         # Normalize scores to 0-1 for coloring
         min_s, max_s = min(scores), max(scores)
         color_values = [(s - min_s) / (max_s - min_s) if (max_s - min_s) > 0 else 0.5 for s in scores]
@@ -153,7 +154,8 @@ class Visualizer:
         node_sizes = [self.vis_config['node_min_size'] + (self.vis_config['node_max_size'] - self.vis_config['node_min_size']) * norm_influences.get(nid, 0.5)
                       for nid in node_ids_ordered]
 
-        base_filename = f"graph_score_gen_{generation}.png" if generation is not None else "graph_score_final.png"
+        #base_filename = f"graph_score_gen_{generation}.png" if generation is not None else "graph_score_final.png"
+        base_filename = "graph_score.png"
         filepath = self.vis_dir / base_filename # Construct full path here
         title = f"Meme Scores (Generation {generation})" if generation is not None else "Final Meme Scores"
         # Pass the full filepath to _base_draw
@@ -697,12 +699,14 @@ class Visualizer:
 
 
         # 6. Plotting Setup
-        all_possible_groups = sorted(list(set(node_group_map.values())))
-        if not all_possible_groups:
-             logger.warning("Skipping plot: No groups defined.")
-             return
-        cmap = plt.cm.get_cmap('Spectral', max(10, len(all_possible_groups)))
-        group_to_color = {g: cmap(i % cmap.N) for i, g in enumerate(all_possible_groups)}
+        unique_groups_overall = sorted(list(set(node_group_map.values())))
+        num_groups = len(unique_groups_overall)
+        cmap = plt.cm.get_cmap('hsv')
+        group_to_color = {
+            g: cmap(i / (num_groups - 1) if num_groups > 1 else 0.5)
+            for i, g in enumerate(unique_groups_overall)
+        }
+        
         visible_groups_set = set(visible_groups) if visible_groups is not None else None
         dpi = self.vis_config.get('dpi', 150)
         # Use a filename pattern for generation steps

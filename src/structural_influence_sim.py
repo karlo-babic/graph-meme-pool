@@ -162,10 +162,10 @@ class GraphManagerStructural:
                  u_global = node_offset + u_local
                  v_global = node_offset + v_local
                  if u_global in G and v_global in G:
-                      weight = round(random.uniform(0.3, 0.95), 2)
+                      weight = round(random.uniform(0.2, 0.6), 2)
                       G.add_edge(u_global, v_global, weight=weight)
                       if random.random() < b:
-                          bidir_weight = round(random.uniform(0.3, 0.95), 2)
+                          bidir_weight = round(random.uniform(0.2, 0.6), 2)
                           G.add_edge(v_global, u_global, weight=bidir_weight)
 
         # Add inter-group edges
@@ -181,13 +181,13 @@ class GraphManagerStructural:
                 for u in valid_nodes_i:
                     if random.random() < inter_p:
                         v = random.choice(valid_nodes_j)
-                        weight = round(random.uniform(0.1, 0.6), 2)
+                        weight = round(random.uniform(0.1, 0.5), 2)
                         G.add_edge(u, v, weight=weight)
 
                 for v in valid_nodes_j:
                     if random.random() < inter_p:
                         u = random.choice(valid_nodes_i)
-                        weight = round(random.uniform(0.1, 0.6), 2)
+                        weight = round(random.uniform(0.1, 0.5), 2)
                         G.add_edge(v, u, weight=weight)
 
     def save_graph(self, filename: Optional[str] = None, last_completed_generation: int = -1):
