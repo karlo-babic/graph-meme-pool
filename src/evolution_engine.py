@@ -107,7 +107,7 @@ class EvolutionEngine:
                         word_count = len(meme.split())
                         diff = abs(word_count - self.avg_initial_word_count)
                         # Penalty function
-                        penalty_factor = np.exp(-0.001 * (diff**2))
+                        penalty_factor = np.exp(-0.0001 * (diff**2))
                         penalized_score = raw_score * penalty_factor
                         # Optional: Log detailed penalty effect for debugging
                         # logger.debug(f"Meme '{meme[:20]}...' WC:{word_count}, Diff:{diff:.1f}, PenaltyFactor:{penalty_factor:.3f}, RawScore:{raw_score:.3f}, PenalizedScore:{penalized_score:.3f}")

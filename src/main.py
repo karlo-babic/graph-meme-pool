@@ -140,7 +140,7 @@ if __name__ == "__main__":
                 evolution_engine.initialize_scores()
                 if visualizer:
                     vis_gen_label = start_generation_index
-                    if True: #config['visualization']['draw_score_per_gen']:
+                    if config['visualization']['draw_score_per_gen']:
                         visualizer.draw_score(generation=vis_gen_label)
                     if config['visualization']['draw_change_per_gen']:
                         visualizer.draw_change(generation=vis_gen_label, history_lookback=4)

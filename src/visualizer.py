@@ -190,7 +190,8 @@ class Visualizer:
         node_sizes = [self.vis_config['node_min_size'] + (self.vis_config['node_max_size'] - self.vis_config['node_min_size']) * norm_influences.get(nid, 0.5)
                       for nid in node_ids_ordered]
 
-        base_filename = f"graph_change_gen_{generation}.png"
+        #base_filename = f"graph_change_gen_{generation}.png"
+        base_filename = "graph_change.png"
         filepath = self.vis_dir / base_filename # Construct full path here
         title = f"Recent Meme Change (Gen {generation}, Lookback {history_lookback})"
         # Pass the full filepath to _base_draw
@@ -244,7 +245,7 @@ class Visualizer:
         # Colors based on group
         unique_groups = sorted(list(set(groups)))
         num_groups = len(unique_groups)
-        cmap = plt.cm.get_cmap('Spectral', num_groups) # Or 'Spectral', 'tab20'
+        cmap = plt.cm.get_cmap('hsv', num_groups)
         group_to_color_val = {group: i / (num_groups - 1) if num_groups > 1 else 0.5 for i, group in enumerate(unique_groups)}
         node_color_values = [group_to_color_val[groups[i]] for i in range(len(node_ids_ordered))]
 
@@ -376,7 +377,7 @@ class Visualizer:
         # Plotting
         plt.figure(figsize=(12, 7))
         num_groups = len(avg_scores)
-        colors = plt.cm.get_cmap("Spectral", num_groups)
+        colors = plt.cm.get_cmap("hsv", num_groups)
 
         for i, (group, avg_history) in enumerate(sorted(avg_scores.items())): # Sort by group ID
              # Find first non-NaN index to start plotting from
@@ -477,12 +478,13 @@ class Visualizer:
                 node_timesteps[node_id].append(timestep)
 
         # Set up colormap for clusters
-        unique_groups = sorted(list(set(node_groups.values()))) # Use list() for safety
-        if not unique_groups:
-             logger.warning("Skipping draw_semantic_drift: No groups found for nodes.")
-             return
-        cmap = plt.cm.get_cmap('Spectral', len(unique_groups))
-        group_to_color = {g: cmap(i) for i, g in enumerate(unique_groups)}
+        unique_groups_overall = sorted(list(set(node_groups.values())))
+        num_groups = len(unique_groups_overall)
+        cmap = plt.cm.get_cmap('hsv', len(unique_groups_overall))
+        group_to_color = {
+            g: cmap(i / (num_groups - 1) if num_groups > 1 else 0.5)
+            for i, g in enumerate(unique_groups_overall)
+        }
 
         # Convert visible_groups to a set for efficient lookup, if provided
         visible_groups_set = set(visible_groups) if visible_groups is not None else None
@@ -965,8 +967,14 @@ class Visualizer:
              return
 
         unique_groups_overall = sorted(list(set(node_group_map.values())))
-        cmap = plt.cm.get_cmap('Spectral', max(10, len(unique_groups_overall)))
-        group_to_color = {g: cmap(i % cmap.N) for i, g in enumerate(unique_groups_overall)}
+        num_groups = len(unique_groups_overall)
+        cmap = plt.cm.get_cmap('hsv')
+        #cmap = plt.cm.get_cmap('hsv', max(10, len(unique_groups_overall)))
+        group_to_color = {
+            g: cmap(i / (num_groups - 1) if num_groups > 1 else 0.5)
+            for i, g in enumerate(unique_groups_overall)
+        }
+        # group_to_color = {g: cmap(i % cmap.N) for i, g in enumerate(unique_groups_overall)}
 
         visible_groups_set = set(visible_groups) if visible_groups is not None else None
         dpi = self.vis_config.get('dpi', 150)

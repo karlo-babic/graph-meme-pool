@@ -1,7 +1,7 @@
 paths:
   init_memes: "init_memes.txt"
   graph_save_dir: "saved"
-  graph_basename: "potato4_small_worlds"
+  graph_basename: "potato6_small_worlds"
   vis_dir: "vis"
   log_file: "simulation.log"
 
@@ -10,7 +10,7 @@ graph_generation:
   initial_meme_assignment: 'random'  # Assignment of memes to nodes: random or structured
   params:
     n: 20      # Nodes per group (for small_worlds) or total nodes (for small_world)
-    k: 4       # Each node is joined with its k nearest neighbors in ring topology
+    k: 3       # Each node is joined with its k nearest neighbors in ring topology
     p: 0.3     # Probability of rewiring each edge (small_world/s)
     b: 0.7     # Probability of adding a backward edge
     g: 5       # Number of groups (for small_worlds)
@@ -60,7 +60,7 @@ embeddings:
 
 visualization:
   # Per-generation plots
-  draw_change_per_gen: false
+  draw_change_per_gen: true
   draw_score_per_gen: false
   draw_semantic_diff_per_gen: false
   # Final plots
