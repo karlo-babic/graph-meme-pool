@@ -304,6 +304,9 @@ class EvolutionEngine:
         all_generated_memes = list(mutated_memes_map.values()) + list(merged_memes_map.values())
         unique_generated_memes = list(dict.fromkeys(filter(None, all_generated_memes)))
 
+        for meme in unique_generated_memes:
+            print(meme)
+            
         new_meme_score_map: Dict[str, Optional[float]] = {}
         if unique_generated_memes:
             logger.info(f"Generation {generation}: Scoring {len(unique_generated_memes)} newly generated unique memes.")

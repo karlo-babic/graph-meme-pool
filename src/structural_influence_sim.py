@@ -162,10 +162,10 @@ class GraphManagerStructural:
                  u_global = node_offset + u_local
                  v_global = node_offset + v_local
                  if u_global in G and v_global in G:
-                      weight = round(random.uniform(0.2, 0.6), 2)
+                      weight = round(random.uniform(0.2, 0.5), 2)
                       G.add_edge(u_global, v_global, weight=weight)
                       if random.random() < b:
-                          bidir_weight = round(random.uniform(0.2, 0.6), 2)
+                          bidir_weight = round(random.uniform(0.2, 0.5), 2)
                           G.add_edge(v_global, u_global, weight=bidir_weight)
 
         # Add inter-group edges

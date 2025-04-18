@@ -97,9 +97,9 @@ class FitnessModel:
                 # --- Score Calculation: Sentiment Score ---
                 # Extract probabilities for positive (index 2) and negative (index 0)
                 if probabilities.shape[1] >= 3: # Ensure there are at least 3 classes
-                    positive_scores_tensor = probabilities[:, 2] # Index 2 for positive
-                    #negative_scores_tensor = probabilities[:, 0] # Index 0 for negative
-                    results = positive_scores_tensor.cpu().numpy()
+                    #positive_scores_tensor = probabilities[:, 2] # Index 2 for positive
+                    negative_scores_tensor = probabilities[:, 0] # Index 0 for negative
+                    results = negative_scores_tensor.cpu().numpy()
                 else:
                     logger.error(f"FitnessModel '{self.model_huggingpath}' output has fewer than 3 classes ({probabilities.shape[1]}).")
                     return [None] * len(texts)

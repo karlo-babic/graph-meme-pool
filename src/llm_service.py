@@ -78,8 +78,8 @@ class LLMService(LLMServiceInterface):
 
         logger.info(f"Loading LLM model: {self.huggingpath}")
         try:
-            self.tokenizer = AutoTokenizer.from_pretrained(self.huggingpath)
-            self.model = AutoModelForCausalLM.from_pretrained(self.huggingpath)
+            self.tokenizer = AutoTokenizer.from_pretrained(self.huggingpath, trust_remote_code=True)
+            self.model = AutoModelForCausalLM.from_pretrained(self.huggingpath, trust_remote_code=True)
             # Ensure pad_token_id is set if tokenizer doesn't have one (common with some models like Phi-3)
             if self.tokenizer.pad_token_id is None:
                  self.tokenizer.pad_token = self.tokenizer.eos_token
@@ -196,9 +196,9 @@ class LLMService(LLMServiceInterface):
         if temperature is None:
             temperature = self.config['temperature_mutate']
 
-        preprompt = self.config['prompt_mutate'] + "\n\n"
-        prompts = [preprompt + f"<text>\n{text}\n</text>\n\n<modified text>" for text in texts]
-        stop_sequence = "</modified text>"
+        preprompt = '<|system|>' + self.config['prompt_mutate'] + '<|end|><|user|>'
+        prompts = [preprompt + f"{text}<|assistant|>" for text in texts]
+        stop_sequence = "<|end|>"
 
         def validation_fn(response):
             response = response.strip()
@@ -227,9 +227,9 @@ class LLMService(LLMServiceInterface):
         if temperature is None:
             temperature = self.config['temperature_merge']
 
-        preprompt = self.config['prompt_merge'] + "\n\n"
-        prompts = [preprompt + f"<text1>\n{t1}\n</text1>\n<text2>\n{t2}\n</text2>\n\n<new text>" for t1, t2 in zip(texts1, texts2)]
-        stop_sequence = "</new text>"
+        preprompt = '<|system|>' + self.config['prompt_merge'] + '<|end|><|user|>'
+        prompts = [preprompt + f"{t1}\n{t2}\<|assistant|>" for t1, t2 in zip(texts1, texts2)]
+        stop_sequence = "<|end|>"
 
         def validation_fn(response):
             response = response.strip()
