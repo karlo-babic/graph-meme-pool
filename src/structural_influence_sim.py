@@ -135,8 +135,8 @@ class GraphManagerStructural:
             data = InfluenceNodeData(node_id=i, current_value=0, history=[0])
             G.add_node(i, data=data)
 
-        # Add edges
-        for u, v in undirected_G.edges():
+        # Add edges - with sorting
+        for u, v in sorted(list(undirected_G.edges())): # <--- SORT HERE
             weight = round(random.uniform(0.1, 1.0), 2)
             G.add_edge(u, v, weight=weight)
             if random.random() < b:
@@ -157,8 +157,8 @@ class GraphManagerStructural:
                 data = InfluenceNodeData(node_id=global_id, current_value=0, history=[0], group=group_idx)
                 G.add_node(global_id, data=data)
 
-            # Add intra-group edges
-            for u_local, v_local in undirected_G.edges():
+            # Add intra-group edges - with sorting
+            for u_local, v_local in sorted(list(undirected_G.edges())): # <--- SORT HERE
                  u_global = node_offset + u_local
                  v_global = node_offset + v_local
                  if u_global in G and v_global in G:

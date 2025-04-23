@@ -16,8 +16,8 @@ import embeddings_utils as emb_utils
 
 logger = logging.getLogger(__name__)
 
-# Set random seed for layout consistency if desired (can be configured)
-# np.random.seed(2)
+# Set random seed for graph layout consistency
+np.random.seed(2)
 
 class Visualizer:
     """Handles generation of all graph visualizations."""
