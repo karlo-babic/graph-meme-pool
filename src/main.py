@@ -165,12 +165,11 @@ if __name__ == "__main__":
             last_completed_gen_in_run = completed_generation_index
             # Per-generation visualization calls controlled here
             if visualizer:
-                generation_num_for_vis = completed_generation_index + 1
+                generation_num_for_vis = completed_generation_index
                 if config['visualization']['draw_score_per_gen']:
                     visualizer.draw_score(generation=generation_num_for_vis)
                 if config['visualization']['draw_change_per_gen']:
-                    # Draw change might need history, pass lookback parameter if needed
-                    visualizer.draw_change(generation=generation_num_for_vis, history_lookback=4) # Example lookback
+                    visualizer.draw_change(generation=generation_num_for_vis, history_lookback=4)
                 if config['visualization']['draw_semantic_diff_per_gen']:
                     visualizer.draw_semantic_difference(generation=generation_num_for_vis)
 

@@ -2,6 +2,7 @@ import random
 import logging
 from typing import Dict, List, Optional, Tuple, Set, Any
 import numpy as np # For checking NaN
+import re
 
 from graph_manager import GraphManager
 from llm_service import LLMServiceInterface
@@ -104,10 +105,10 @@ class EvolutionEngine:
                 # Only apply penalty to valid, non-NaN scores
                 if raw_score is not None and not np.isnan(raw_score) and isinstance(meme, str) and meme:
                     try:
-                        word_count = len(meme.split())
+                        word_count = len(re.split(r"[-\s]+", meme))
                         diff = abs(word_count - self.avg_initial_word_count)
                         # Penalty function
-                        penalty_factor = np.exp(-0.001 * (diff**2))
+                        penalty_factor = np.exp(-0.01 * (diff**2))
                         penalized_score = raw_score * penalty_factor
                         # Optional: Log detailed penalty effect for debugging
                         # logger.debug(f"Meme '{meme[:20]}...' WC:{word_count}, Diff:{diff:.1f}, PenaltyFactor:{penalty_factor:.3f}, RawScore:{raw_score:.3f}, PenalizedScore:{penalized_score:.3f}")

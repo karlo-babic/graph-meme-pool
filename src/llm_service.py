@@ -203,7 +203,7 @@ class LLMService(LLMServiceInterface):
         def validation_fn(response):
             response = response.strip()
             # More robust check for tags or unwanted artifacts
-            if not response or "<text>" in response or "<modified text>" in response or "##" in response or "**" in response:
+            if not response or "<text>" in response or "<modified text>" in response or "##" in response or "**" in response or response[0] == '"':
                 return False, response
             cleaned_response = remove_unfinished_sentence(response)
             return bool(cleaned_response), cleaned_response # Ensure not empty after cleaning
@@ -233,7 +233,7 @@ class LLMService(LLMServiceInterface):
 
         def validation_fn(response):
             response = response.strip()
-            if not response or "<text" in response or "<new text>" in response or "##" in response or "**" in response:
+            if not response or "<text" in response or "<new text>" in response or "##" in response or "**" in response or response[0] == '"':
                 return False, response
             cleaned_response = remove_unfinished_sentence(response)
             return bool(cleaned_response), cleaned_response

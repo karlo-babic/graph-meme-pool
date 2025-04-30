@@ -188,7 +188,7 @@ class GraphManager:
             G.add_node(i, data=data)
 
         # Add edges - with sorting
-        for u, v in sorted(list(undirected_G.edges())): # <--- SORT HERE
+        for u, v in sorted(list(undirected_G.edges())):
             weight = round(random.uniform(0.1, 1.0), 2)
             G.add_edge(u, v, weight=weight)
             if random.random() < b:
@@ -235,15 +235,15 @@ class GraphManager:
                 G.add_node(global_id, data=data)
 
             # Add intra-group edges - with sorting
-            for u_local, v_local in sorted(list(undirected_G.edges())): # <--- SORT HERE
+            for u_local, v_local in sorted(list(undirected_G.edges())):
                 u_global = node_offset + u_local
                 v_global = node_offset + v_local
                 # Check if nodes were actually added (in case of errors)
                 if u_global in G and v_global in G:
-                    weight = round(random.uniform(0.2, 0.5), 2)
+                    weight = round(random.uniform(0.3, 0.7), 2)
                     G.add_edge(u_global, v_global, weight=weight)
                     if random.random() < b:
-                        bidir_weight = round(random.uniform(0.2, 0.5), 2)
+                        bidir_weight = round(random.uniform(0.3, 0.7), 2)
                         G.add_edge(v_global, u_global, weight=bidir_weight)
 
         # Calculate and add inter-group edges based on global_ids...
@@ -260,13 +260,13 @@ class GraphManager:
                 for u in valid_nodes_i:
                     if random.random() < inter_p:
                         v = random.choice(valid_nodes_j)
-                        weight = round(random.uniform(0.1, 0.5), 2)
+                        weight = round(random.uniform(0.02, 0.1), 2)  #  0.2, 0.6   0.1, 0.3
                         G.add_edge(u, v, weight=weight)
 
                 for v in valid_nodes_j:
                     if random.random() < inter_p:
                         u = random.choice(valid_nodes_i)
-                        weight = round(random.uniform(0.1, 0.5), 2)
+                        weight = round(random.uniform(0.02, 0.1), 2)
                         G.add_edge(v, u, weight=weight)
 
 
