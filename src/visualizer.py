@@ -117,7 +117,7 @@ class Visualizer:
             else:
                  node_labels[node_id] = str(node_id) # Fallback to ID
 
-        nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=7) # Slightly larger font
+        #nx.draw_networkx_labels(G, pos, font_size=7) # Slightly larger font
 
         if title:
             plt.title(title, fontsize=16)
@@ -236,7 +236,7 @@ class Visualizer:
         embeddings_dict = {node_id_map[i]: emb for i, emb in enumerate(embeddings_np)}
 
         # Reduce dimensions
-        embeddings_2d = emb_utils.reduce_dimensions_tsne(embeddings_dict, random_state=42)
+        embeddings_2d = emb_utils.reduce_dimensions_tsne(embeddings_dict, random_state=41)
         if not embeddings_2d:
             logger.error("Failed to reduce embedding dimensions for draw_embs. Skipping plot.")
             return
@@ -247,7 +247,7 @@ class Visualizer:
         # Colors based on group
         unique_groups = sorted(list(set(groups)))
         num_groups = len(unique_groups)
-        cmap = plt.cm.get_cmap('hsv', num_groups)
+        cmap = plt.cm.get_cmap('tab10', num_groups)
         group_to_color_val = {group: i / (num_groups - 1) if num_groups > 1 else 0.5 for i, group in enumerate(unique_groups)}
         node_color_values = [group_to_color_val[groups[i]] for i in range(len(node_ids_ordered))]
 
@@ -379,7 +379,7 @@ class Visualizer:
         # Plotting
         plt.figure(figsize=(12, 7))
         num_groups = len(avg_scores)
-        colors = plt.cm.get_cmap("hsv", num_groups)
+        colors = plt.cm.get_cmap('tab10', num_groups)
 
         for i, (group, avg_history) in enumerate(sorted(avg_scores.items())): # Sort by group ID
              # Find first non-NaN index to start plotting from
@@ -394,8 +394,8 @@ class Visualizer:
 
 
         plt.xlabel("Generation")
-        plt.ylabel("Average Meme Score (Virality)")
-        plt.title("Average Meme Score per Generation by Group")
+        plt.ylabel("Average Meme Score")
+        #plt.title("Average Meme Score per Generation by Group")
         plt.legend(loc='best')
         plt.grid(True, linestyle='--', alpha=0.6)
         plt.ylim(0, 1.05) # Scores are normalized 0-1
@@ -482,7 +482,7 @@ class Visualizer:
         # Set up colormap for clusters
         unique_groups_overall = sorted(list(set(node_groups.values())))
         num_groups = len(unique_groups_overall)
-        cmap = plt.cm.get_cmap('hsv', len(unique_groups_overall))
+        cmap = plt.cm.get_cmap('tab10', len(unique_groups_overall))
         group_to_color = {
             g: cmap(i / (num_groups - 1) if num_groups > 1 else 0.5)
             for i, g in enumerate(unique_groups_overall)
@@ -701,7 +701,7 @@ class Visualizer:
         # 6. Plotting Setup
         unique_groups_overall = sorted(list(set(node_group_map.values())))
         num_groups = len(unique_groups_overall)
-        cmap = plt.cm.get_cmap('hsv')
+        cmap = plt.cm.get_cmap('tab10')
         group_to_color = {
             g: cmap(i / (num_groups - 1) if num_groups > 1 else 0.5)
             for i, g in enumerate(unique_groups_overall)
@@ -972,7 +972,7 @@ class Visualizer:
 
         unique_groups_overall = sorted(list(set(node_group_map.values())))
         num_groups = len(unique_groups_overall)
-        cmap = plt.cm.get_cmap('hsv')
+        cmap = plt.cm.get_cmap('tab10')
         #cmap = plt.cm.get_cmap('hsv', max(10, len(unique_groups_overall)))
         group_to_color = {
             g: cmap(i / (num_groups - 1) if num_groups > 1 else 0.5)
