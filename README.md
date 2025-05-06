@@ -6,7 +6,7 @@ This repository contains the source code for the research paper:
 
 *Karlo Babić*
 
-(Link to paper: `[Insert Link to Published Paper/Preprint Here - e.g., DOI, arXiv link]`)
+(Link to paper: `[TODO`)
 
 ## Abstract
 
@@ -69,7 +69,8 @@ The `config.yaml` file is central to controlling the simulation. Key sections in
 If you use this code or framework in your research, please cite the original paper:
 
 ```bibtex
-@article{Babic_GMP_202X,
+TODO
+@article{,
   author    = {Karlo Babi{\'c}},
   title     = {Selection in the Meme Pool: Graph-Based Evolution of Textual Content},
   journal   = {[Insert Journal/Conference Proceedings Name Here]},
