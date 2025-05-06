@@ -1,5 +1,6 @@
 import networkx as nx
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 import numpy as np
 import logging
 from pathlib import Path
@@ -377,28 +378,54 @@ class Visualizer:
                  continue # Skip this group
 
         # Plotting
-        plt.figure(figsize=(12, 7))
+        plt.figure(figsize=(12, 7))  # 7, 4
         num_groups = len(avg_scores)
+        # Get a colormap; providing num_groups ensures distinct colors are selected if possible
         colors = plt.cm.get_cmap('tab10', num_groups)
+
+        # Define a list of line styles to cycle through
+        line_styles = ['-', '--', ':', '-.', (0, (5, 5))] # Solid, Dashed, Dotted, Dash-Dot, Custom Dash-Dot-Dot
+
+        base_linewidth = 2
+        background_linewidth_increase = 1 # How much thicker the background line is
+        background_alpha = 0.1 # How transparent the background line is
 
         for i, (group, avg_history) in enumerate(sorted(avg_scores.items())): # Sort by group ID
              # Find first non-NaN index to start plotting from
              first_valid_index = np.where(~np.isnan(avg_history))[0]
              if len(first_valid_index) > 0:
                   start_index = first_valid_index[0]
+                  # Select a line style based on the group index
+                  current_style = line_styles[i % len(line_styles)]
+                  # Get the color for this group
+                  current_color = colors(i)
+
+                  # 1. Plot the background line (thicker, lighter, solid)
                   plt.plot(range(start_index, len(avg_history)), avg_history[start_index:],
-                           color=colors(i / (num_groups-1) if num_groups > 1 else 0.5), # Adjust color indexing
-                           label=f"Group {group}", linewidth=2)
+                           color='black',
+                           alpha=background_alpha, # Make it quite transparent
+                           linewidth=base_linewidth + background_linewidth_increase, # Make it thicker
+                           linestyle='-', # Always solid for the background
+                           zorder=1, # Ensure it's plotted behind the main line
+                           label=None) # No label for the background line
+
+                  # 2. Plot the main styled line on top
+                  plt.plot(range(start_index, len(avg_history)), avg_history[start_index:],
+                           color=current_color,
+                           linestyle=current_style, # Assign the selected line style
+                           linewidth=base_linewidth, # Use the standard width
+                           label=f"Group {group}", # Label only the main line for the legend
+                           zorder=2) # Ensure it's plotted on top
+
              else:
                   logger.warning(f"Group {group} has no valid score data to plot.")
 
-
         plt.xlabel("Generation")
         plt.ylabel("Average Meme Score")
-        #plt.title("Average Meme Score per Generation by Group")
+        # plt.title("Average Meme Score per Generation by Group (with Line Styles)") # Optional: Update title
         plt.legend(loc='best')
         plt.grid(True, linestyle='--', alpha=0.6)
-        plt.ylim(0, 1.05) # Scores are normalized 0-1
+        plt.ylim(0, 1) # Scores are normalized 0-1
 
         filename = self.vis_dir / "plot_score_history_bygroup.png"
         try:
@@ -411,153 +438,153 @@ class Visualizer:
 
 
 
-    def draw_semantic_drift(self, num_generations: int = -1, visible_groups: Optional[List[Any]] = None):
-        """
-        Visualizes semantic drift of memes per node over time using embedding space trajectories.
+    # def draw_semantic_drift(self, num_generations: int = -1, visible_groups: Optional[List[Any]] = None):
+    #     """
+    #     Visualizes semantic drift of memes per node over time using embedding space trajectories.
 
-        Args:
-            num_generations (int): The maximum number of generations (history steps) to include.
-                                   Defaults to -1 (include all).
-            visible_groups (Optional[List[Any]]): A list of group identifiers for which to display
-                                                  trajectories. If None (default), trajectories for
-                                                  all groups are displayed. Nodes from *all* groups
-                                                  are still used for embedding calculation and
-                                                  dimensionality reduction.
-        """
-        if not self.embedding_model:
-            logger.warning("Skipping draw_semantic_drift: Embedding model not available.")
-            return
+    #     Args:
+    #         num_generations (int): The maximum number of generations (history steps) to include.
+    #                                Defaults to -1 (include all).
+    #         visible_groups (Optional[List[Any]]): A list of group identifiers for which to display
+    #                                               trajectories. If None (default), trajectories for
+    #                                               all groups are displayed. Nodes from *all* groups
+    #                                               are still used for embedding calculation and
+    #                                               dimensionality reduction.
+    #     """
+    #     if not self.embedding_model:
+    #         logger.warning("Skipping draw_semantic_drift: Embedding model not available.")
+    #         return
 
-        G = self.graph_manager.graph
-        if G.number_of_nodes() == 0:
-            logger.warning("Skipping draw_semantic_drift: Graph has no nodes.")
-            return
+    #     G = self.graph_manager.graph
+    #     if G.number_of_nodes() == 0:
+    #         logger.warning("Skipping draw_semantic_drift: Graph has no nodes.")
+    #         return
 
-        # Collect all meme histories and associated metadata
-        all_texts = []
-        text_index_map = []  # List of (node_id, timestep)
-        node_groups = {}     # node_id -> group
+    #     # Collect all meme histories and associated metadata
+    #     all_texts = []
+    #     text_index_map = []  # List of (node_id, timestep)
+    #     node_groups = {}     # node_id -> group
 
-        for node_id in G.nodes():
-            # Use a safer way to access node data if structure varies
-            data = self.graph_manager.get_node_data(node_id)
-            # Check if data exists and has 'history' attribute
-            if hasattr(data, 'history') and data.history:
-                group = getattr(data, 'group', 0) # Default group 0 if not present
-                node_groups[node_id] = group
-                for t, meme in enumerate(data.history):
-                    if num_generations >= 0 and t >= num_generations:
-                        break
-                    all_texts.append(str(meme)) # Ensure text is string
-                    text_index_map.append((node_id, t))
+    #     for node_id in G.nodes():
+    #         # Use a safer way to access node data if structure varies
+    #         data = self.graph_manager.get_node_data(node_id)
+    #         # Check if data exists and has 'history' attribute
+    #         if hasattr(data, 'history') and data.history:
+    #             group = getattr(data, 'group', 0) # Default group 0 if not present
+    #             node_groups[node_id] = group
+    #             for t, meme in enumerate(data.history):
+    #                 if num_generations >= 0 and t >= num_generations:
+    #                     break
+    #                 all_texts.append(str(meme)) # Ensure text is string
+    #                 text_index_map.append((node_id, t))
 
-        if not all_texts:
-             logger.warning("Skipping draw_semantic_drift: No meme history found in any node.")
-             return
+    #     if not all_texts:
+    #          logger.warning("Skipping draw_semantic_drift: No meme history found in any node.")
+    #          return
 
-        # Compute all embeddings
-        logger.info(f"Calculating embeddings for {len(all_texts)} memes...")
-        all_embeddings = emb_utils.calculate_sentence_embeddings(all_texts, self.embedding_model)
-        if all_embeddings is None or all_embeddings.size == 0:
-            logger.error("Failed to calculate embeddings for draw_semantic_drift. Skipping plot.")
-            return
+    #     # Compute all embeddings
+    #     logger.info(f"Calculating embeddings for {len(all_texts)} memes...")
+    #     all_embeddings = emb_utils.calculate_sentence_embeddings(all_texts, self.embedding_model)
+    #     if all_embeddings is None or all_embeddings.size == 0:
+    #         logger.error("Failed to calculate embeddings for draw_semantic_drift. Skipping plot.")
+    #         return
 
-        # Reduce to 2D using t-SNE
-        logger.info(f"Reducing dimensionality for {len(all_texts)} memes...")
-        # Ensure embeddings_dict keys match indices expected by text_index_map
-        embeddings_dict = {i: emb for i, emb in enumerate(all_embeddings)}
-        reduced_2d = emb_utils.reduce_dimensions_tsne(embeddings_dict, random_state=42)
-        if not reduced_2d:
-            logger.error("Failed to reduce embedding dimensions for draw_semantic_drift. Skipping plot.")
-            return
+    #     # Reduce to 2D using t-SNE
+    #     logger.info(f"Reducing dimensionality for {len(all_texts)} memes...")
+    #     # Ensure embeddings_dict keys match indices expected by text_index_map
+    #     embeddings_dict = {i: emb for i, emb in enumerate(all_embeddings)}
+    #     reduced_2d = emb_utils.reduce_dimensions_tsne(embeddings_dict, random_state=42)
+    #     if not reduced_2d:
+    #         logger.error("Failed to reduce embedding dimensions for draw_semantic_drift. Skipping plot.")
+    #         return
 
-        # Organize by node for plotting
-        node_trails = defaultdict(list)      # node_id -> list of (x, y)
-        node_timesteps = defaultdict(list)   # node_id -> list of timestep (used for alpha)
-        for i, (node_id, timestep) in enumerate(text_index_map):
-            if i in reduced_2d:
-                node_trails[node_id].append(reduced_2d[i])
-                node_timesteps[node_id].append(timestep)
+    #     # Organize by node for plotting
+    #     node_trails = defaultdict(list)      # node_id -> list of (x, y)
+    #     node_timesteps = defaultdict(list)   # node_id -> list of timestep (used for alpha)
+    #     for i, (node_id, timestep) in enumerate(text_index_map):
+    #         if i in reduced_2d:
+    #             node_trails[node_id].append(reduced_2d[i])
+    #             node_timesteps[node_id].append(timestep)
 
-        # Set up colormap for clusters
-        unique_groups_overall = sorted(list(set(node_groups.values())))
-        num_groups = len(unique_groups_overall)
-        cmap = plt.cm.get_cmap('tab10', len(unique_groups_overall))
-        group_to_color = {
-            g: cmap(i / (num_groups - 1) if num_groups > 1 else 0.5)
-            for i, g in enumerate(unique_groups_overall)
-        }
+    #     # Set up colormap for clusters
+    #     unique_groups_overall = sorted(list(set(node_groups.values())))
+    #     num_groups = len(unique_groups_overall)
+    #     cmap = plt.cm.get_cmap('tab10', len(unique_groups_overall))
+    #     group_to_color = {
+    #         g: cmap(i / (num_groups - 1) if num_groups > 1 else 0.5)
+    #         for i, g in enumerate(unique_groups_overall)
+    #     }
 
-        # Convert visible_groups to a set for efficient lookup, if provided
-        visible_groups_set = set(visible_groups) if visible_groups is not None else None
+    #     # Convert visible_groups to a set for efficient lookup, if provided
+    #     visible_groups_set = set(visible_groups) if visible_groups is not None else None
 
-        # Plotting
-        logger.info(f"Plotting...")
-        plt.figure(figsize=(15, 15))
-        nodes_plotted = 0
-        for node_id, trail in node_trails.items():
-            group = node_groups.get(node_id, 0) # Get group, default 0
+    #     # Plotting
+    #     logger.info(f"Plotting...")
+    #     plt.figure(figsize=(15, 15))
+    #     nodes_plotted = 0
+    #     for node_id, trail in node_trails.items():
+    #         group = node_groups.get(node_id, 0) # Get group, default 0
 
-            # Check if this group should be visible
-            if visible_groups_set is None or group in visible_groups_set:
-                nodes_plotted += 1
-                color = group_to_color.get(group, (0.5, 0.5, 0.5)) # Default color grey
+    #         # Check if this group should be visible
+    #         if visible_groups_set is None or group in visible_groups_set:
+    #             nodes_plotted += 1
+    #             color = group_to_color.get(group, (0.5, 0.5, 0.5)) # Default color grey
 
-                timesteps = node_timesteps[node_id]
-                n = len(trail)
-                max_time = max(timesteps) if timesteps else 0
+    #             timesteps = node_timesteps[node_id]
+    #             n = len(trail)
+    #             max_time = max(timesteps) if timesteps else 0
 
-                # Plot lines connecting consecutive points
-                for i in range(n - 1):
-                    x1, y1 = trail[i]
-                    x2, y2 = trail[i + 1]
-                    # Alpha based on normalized time step for better temporal flow visualization
-                    current_time = timesteps[i]
-                    alpha = (current_time + 1) / (max_time + 1) if max_time > 0 else 1.0
-                    plt.plot([x1, x2], [y1, y2],
-                             color=color,
-                             alpha=min(1.0, max(0.1, alpha * 0.8)), # Ensure alpha is within bounds
-                             linewidth=0.6)
+    #             # Plot lines connecting consecutive points
+    #             for i in range(n - 1):
+    #                 x1, y1 = trail[i]
+    #                 x2, y2 = trail[i + 1]
+    #                 # Alpha based on normalized time step for better temporal flow visualization
+    #                 current_time = timesteps[i]
+    #                 alpha = (current_time + 1) / (max_time + 1) if max_time > 0 else 1.0
+    #                 plt.plot([x1, x2], [y1, y2],
+    #                          color=color,
+    #                          alpha=min(1.0, max(0.1, alpha * 0.8)), # Ensure alpha is within bounds
+    #                          linewidth=0.6)
 
-                # Plot points (markers)
-                for i, (x, y) in enumerate(trail):
-                    current_time = timesteps[i]
-                    alpha = (current_time + 1) / (max_time + 1) if max_time > 0 else 1.0
-                     # Use alpha for points as well, maybe slightly stronger
-                    plt.scatter(x, y,
-                                color=color,
-                                alpha=min(1.0, max(0.1, alpha)),
-                                s=10,
-                                edgecolors='none') # Remove edgecolors for cleaner look
+    #             # Plot points (markers)
+    #             for i, (x, y) in enumerate(trail):
+    #                 current_time = timesteps[i]
+    #                 alpha = (current_time + 1) / (max_time + 1) if max_time > 0 else 1.0
+    #                  # Use alpha for points as well, maybe slightly stronger
+    #                 plt.scatter(x, y,
+    #                             color=color,
+    #                             alpha=min(1.0, max(0.1, alpha)),
+    #                             s=10,
+    #                             edgecolors='none') # Remove edgecolors for cleaner look
 
-        if nodes_plotted == 0:
-            logger.warning("No nodes were plotted. Check if 'visible_groups' parameter is set correctly or if data exists for the specified groups.")
+    #     if nodes_plotted == 0:
+    #         logger.warning("No nodes were plotted. Check if 'visible_groups' parameter is set correctly or if data exists for the specified groups.")
 
-        title = "Semantic Drift of Memes Over Time"
-        if visible_groups is not None:
-            title += f" (Visible Groups: {', '.join(map(str, visible_groups))})"
-        else:
-             title += ""
-        plt.title(title)
-        plt.axis('off')
-        plt.tight_layout()
+    #     title = "Semantic Drift of Memes Over Time"
+    #     if visible_groups is not None:
+    #         title += f" (Visible Groups: {', '.join(map(str, visible_groups))})"
+    #     else:
+    #          title += ""
+    #     plt.title(title)
+    #     plt.axis('off')
+    #     plt.tight_layout()
 
-        # Use pathlib for path construction if possible
-        # output_file = self.vis_dir / "semantic_drift_trails.png"
-        # Assuming self.vis_dir is string for now:
-        import os
-        output_file = os.path.join(self.vis_dir, "semantic_drift_trails.png")
+    #     # Use pathlib for path construction if possible
+    #     # output_file = self.vis_dir / "semantic_drift_trails.png"
+    #     # Assuming self.vis_dir is string for now:
+    #     import os
+    #     output_file = os.path.join(self.vis_dir, "semantic_drift_trails.png")
 
-        try:
-            # Use configuration for DPI
-            dpi = self.vis_config.get('dpi', 150)
-            plt.savefig(output_file, bbox_inches='tight', dpi=dpi)
-            logger.info(f"Saved semantic drift visualization to {output_file}")
-        except Exception as e:
-            logger.error(f"Failed to save semantic drift visualization {output_file}: {e}")
-        finally:
-             # Always close the plot to free memory
-            plt.close()
+    #     try:
+    #         # Use configuration for DPI
+    #         dpi = self.vis_config.get('dpi', 150)
+    #         plt.savefig(output_file, bbox_inches='tight', dpi=dpi)
+    #         logger.info(f"Saved semantic drift visualization to {output_file}")
+    #     except Exception as e:
+    #         logger.error(f"Failed to save semantic drift visualization {output_file}: {e}")
+    #     finally:
+    #          # Always close the plot to free memory
+    #         plt.close()
 
 
     def draw_semantic_drift(self, num_generations: int = -1, visible_groups: Optional[List[Any]] = None, min_size=5, max_size=2000, min_alpha=0.1, max_alpha=1.0):
@@ -697,28 +724,63 @@ class Visualizer:
                 _, std_dev = centroid_data_high_dim.get(centroid_key, (None, 0.0)) # Default std_dev if key somehow missing
                 points_by_timestep[timestep]['centroids'][group] = (*reduced_2d[meta['id']], std_dev)
 
-
         # 6. Plotting Setup
         unique_groups_overall = sorted(list(set(node_group_map.values())))
-        num_groups = len(unique_groups_overall)
-        cmap = plt.cm.get_cmap('tab10')
+
+        # Determine which groups to actually plot and include in the legend
+        if visible_groups is not None:
+            visible_groups_set = set(visible_groups)
+            # Filter the list of groups we will work with
+            unique_groups_to_plot = [g for g in unique_groups_overall if g in visible_groups_set]
+        else:
+            visible_groups_set = None # Still useful for checks later if needed
+            unique_groups_to_plot = unique_groups_overall # Plot all groups
+
+        if not unique_groups_to_plot:
+             logger.warning("No groups to plot based on visibility settings.")
+             return # Exit if no visible groups
+
+        num_groups = len(unique_groups_to_plot)
+        cmap = plt.cm.get_cmap('tab10') # Consider 'viridis', 'plasma', or grayscale-friendly colormaps too
         group_to_color = {
             g: cmap(i / (num_groups - 1) if num_groups > 1 else 0.5)
-            for i, g in enumerate(unique_groups_overall)
+            for i, g in enumerate(unique_groups_to_plot)
         }
-        
-        visible_groups_set = set(visible_groups) if visible_groups is not None else None
+
+        # Define hatch patterns for textures - add more if you have many groups
+        hatch_patterns = ['//', '\\\\', '||', '--', '**', 'xx', '++', 'OO', '..', 'oo']
+        group_to_hatch = {
+            # Assign a hatch pattern cyclically to each group intended for plotting
+            g: hatch_patterns[i % len(hatch_patterns)]
+            for i, g in enumerate(unique_groups_to_plot)
+        }
+
         dpi = self.vis_config.get('dpi', 150)
-        # Use a filename pattern for generation steps
         output_file_base = self.vis_dir / "semantic_drift_gen" # Base name for frame sequence
 
+        # Prepare legend handles using the filtered groups
+        legend_handles = []
+        for group in unique_groups_to_plot:
+            color = group_to_color[group]
+            hatch = group_to_hatch[group]
+            # Create a representative patch for the legend entry
+            # Using Patch allows showing both color and hatch
+            handle = patches.Patch(facecolor=color, hatch=hatch, edgecolor='black', label=f'Group {group}')
+            legend_handles.append(handle)
+
+              
         # 7. Plotting Execution - Generation by Generation
-        logger.info(f"Plotting drift (Centroid Size/Alpha ~ StdDev) generation by generation up to timestep {max_timestep_overall}...")
-        fig, ax = plt.subplots(figsize=(15, 15))
+        logger.info(f"Plotting drift (Centroid Size/Alpha ~ StdDev, Hatch ~ Group) generation by generation up to timestep {max_timestep_overall}...")
+        fig, ax = plt.subplots(figsize=(15, 15))      
+        ax.set_aspect('equal', adjustable='box')
         ax.axis('off') # Turn off axis once
 
         # Store previous centroid COORDINATES to draw connecting lines
         prev_centroids_2d_coords = defaultdict(dict) # timestep -> group -> (cx, cy)
+
+        # Define a scaling factor for converting scatter size (area) to circle radius
+        # Adjust this value based on visual results
+        radius_scale_factor = 0.2
 
         plotted_anything_ever = False
         for t in range(max_timestep_overall + 1):
@@ -732,41 +794,56 @@ class Visualizer:
 
             # Plot Centroids for timestep 't' and connect to 't-1'
             for group, (cx, cy, std_dev) in centroids_t_data.items():
-                if visible_groups_set is None or group in visible_groups_set:
-                    color = group_to_color.get(group, (0.5, 0.5, 0.5))
+                # Use the pre-filtered visible_groups_set or check if None (all visible)
+                # Also check if the group is in our mapping (it should be if filtered correctly)
+                if (visible_groups_set is None or group in visible_groups_set) and group in group_to_color:
+                    color = group_to_color[group]
+                    hatch = group_to_hatch.get(group, None) # Get the hatch pattern
 
-                    # Calculate size and alpha based on normalized std dev
-                    # Scale std dev non-linearly (e.g., power) to emphasize differences
+                    # Calculate size and alpha based on normalized std dev (same as before)
                     normalized_std = (std_dev - min_std) / std_range if std_range > 1e-9 else 0.5
-                    # Larger std dev -> larger size (less concentrated)
                     scaled_norm_std_size = normalized_std ** 5
                     size = min_size + scaled_norm_std_size * (max_size - min_size)
-                    # Larger std dev -> lower alpha (less concentrated)
                     scaled_norm_std_alpha = normalized_std ** 5
                     alpha_val = max_alpha - scaled_norm_std_alpha * (max_alpha - min_alpha)
-                    alpha_val = np.clip(alpha_val, 0.0, 1.0) # Ensure alpha is valid [0, 1]
+                    alpha_val = np.clip(alpha_val, 0.0, 1.0)
 
-                    # Plot centroid marker with calculated size/alpha
-                    ax.scatter(cx, cy, color=color, alpha=alpha_val, s=size, marker='o', edgecolors='black', linewidth=0.5, zorder=5)
+                    # Convert scatter size (area) to radius for Circle patch
+                    # Use max(0, size) to avoid errors with negative size if normalization goes wrong
+                    radius = np.sqrt(max(0, size) / np.pi) * radius_scale_factor # Adjust scale factor as needed
+
+                    # --- MODIFIED PART: Use patches.Circle ---
+                    circle = patches.Circle(
+                        (cx, cy),
+                        radius=radius,
+                        facecolor=color,         # Set face color
+                        alpha=alpha_val,         # Set alpha
+                        hatch=hatch,             # Set hatch pattern
+                        edgecolor='black',       # Keep edge color
+                        linewidth=0.5,           # Keep line width
+                        zorder=5                 # Keep z-order
+                    )
+                    ax.add_patch(circle) # Add the circle patch to the axes
+                    # --- END MODIFIED PART ---
+
                     plotted_in_this_gen = True
                     current_gen_centroid_coords[group] = (cx, cy) # Store coords for line drawing
 
-                    # Plot connecting line from previous timestep's centroid if it exists
+                    # Plot connecting line from previous timestep's centroid if it exists (same as before)
                     if t > 0 and group in prev_centroids_2d_coords.get(t-1, {}):
                         prev_cx, prev_cy = prev_centroids_2d_coords[t-1][group]
-                        # Line alpha based on time (start of line) for progression clarity
                         line_alpha = t / (max_timestep_overall + 1) if max_timestep_overall > 0 else 1.0
-                        ax.plot([prev_cx, cx], [prev_cy, cy], color=color, alpha=min(1.0, max(0.2, line_alpha * 0.9)), linewidth=1.5)
+                        ax.plot([prev_cx, cx], [prev_cy, cy], color=color, alpha=min(1.0, max(0.3, line_alpha * 0.9)), linewidth=1.5, zorder=4) # Lower zorder for lines
 
-            # Plot Individual points for timestep 't'
+            # Plot Individual points for timestep 't' (keep as scatter, no hatching needed)
             for point_data in individuals_t:
                  group = point_data['group']
-                 if visible_groups_set is None or group in visible_groups_set:
-                     color = group_to_color.get(group, (0.5, 0.5, 0.5))
-                     # Use original time-based alpha for individual points
+                 # Check visibility for individuals too
+                 if (visible_groups_set is None or group in visible_groups_set) and group in group_to_color:
+                     color = group_to_color[group]
                      indiv_alpha_val = (t + 1) / (max_timestep_overall + 1) if max_timestep_overall > 0 else 1.0
-                     ax.scatter(point_data['x'], point_data['y'], color=color, alpha=min(1.0, max(0.05, indiv_alpha_val * 0.3)), s=8, edgecolors='none')
-                     plotted_in_this_gen = True # Count individuals as plotting something
+                     ax.scatter(point_data['x'], point_data['y'], color=color, alpha=0.5, s=10, marker='.', edgecolors='none', zorder=3) # Use smaller marker maybe
+                     plotted_in_this_gen = True
 
             # Update previous centroid coordinates *after* iterating through all groups for the timestep
             if current_gen_centroid_coords:
@@ -776,37 +853,43 @@ class Visualizer:
             if plotted_in_this_gen:
                 plotted_anything_ever = True
                 # Update title dynamically
-                visible_group_str = f"(Visible Groups: {', '.join(map(str, sorted(list(visible_groups_set))))})" if visible_groups is not None else ""
-                current_title = f"Semantic Drift (Centroid Size/Alpha ~ StdDev) - Gen {t}/{max_timestep_overall} {visible_group_str}"
-                ax.set_title(current_title) # Update title each frame
+                visible_group_str = f"(Visible Groups: {', '.join(map(str, sorted(unique_groups_to_plot)))})" if visible_groups is not None else ""
+                current_title = f"Gen {t}/{max_timestep_overall}"
+                ax.set_title(current_title)
+
+                # --- ADD LEGEND ---
+                # Add the legend on each frame if desired
+                ax.legend(handles=legend_handles, title="Groups", loc='lower left')
+                # --- END LEGEND ---
+
                 fig.tight_layout() # Adjust layout
 
-                # Save each generation to a different file
                 gen_output_file = self.vis_dir / f"{output_file_base.stem}_{t:04d}.png"
+                #gen_output_file = self.vis_dir / f"{output_file_base.stem}.png"
                 try:
                     fig.savefig(gen_output_file, bbox_inches='tight', dpi=dpi)
                     logger.info(f"Saved plot for generation {t} to {gen_output_file}")
                 except Exception as e:
                     logger.error(f"Failed to save plot for generation {t} to {gen_output_file}: {e}")
                     plt.close(fig)
-                    return # Stop if saving fails
+                    return
 
         if not plotted_anything_ever:
             logger.warning("No data was plotted based on visibility settings and available timesteps.")
+        # else: # Optional: If you want the legend only on the *last* saved frame uncomment this block
+        #     # And comment out the ax.legend() call inside the loop above
+        #     try:
+        #         visible_group_str = f"(Visible Groups: {', '.join(map(str, sorted(unique_groups_to_plot)))})" if visible_groups is not None else ""
+        #         final_title = f"Semantic Drift (Centroid Size/Alpha ~ StdDev, Hatch ~ Group) - Final (Gen {max_timestep_overall}) {visible_group_str}"
+        #         ax.set_title(final_title)
+        #         ax.legend(handles=legend_handles, title="Groups", loc='best') # Add legend to the final state
+        #         fig.tight_layout()
+        #         final_output_file = self.vis_dir / f"{output_file_base.stem}_final.png"
+        #         fig.savefig(final_output_file, bbox_inches='tight', dpi=dpi)
+        #         logger.info(f"Saved final plot state with legend to {final_output_file}")
+        #     except Exception as e:
+        #          logger.error(f"Failed to save final plot state {final_output_file}: {e}")
 
-        # Optional: Create a final composite or just rely on the last saved frame
-        # If a single final file is desired, save it here (potentially overwriting an older version if named identically)
-        # final_output_file = self.vis_dir / "semantic_drift_centroids_std_final.png"
-        # try:
-        #     # Ensure title is final
-        #     visible_group_str = f"(Visible Groups: {', '.join(map(str, sorted(list(visible_groups_set))))})" if visible_groups is not None else ""
-        #     final_title = f"Semantic Drift (Centroid Size/Alpha ~ StdDev) - Final (Gen {max_timestep_overall}) {visible_group_str}"
-        #     ax.set_title(final_title)
-        #     fig.tight_layout()
-        #     fig.savefig(final_output_file, bbox_inches='tight', dpi=dpi)
-        #     logger.info(f"Saved final plot state to {final_output_file}")
-        # except Exception as e:
-        #      logger.error(f"Failed to save final plot state {final_output_file}: {e}")
 
         logger.info(f"Finished plotting generation by generation. Frame sequence saved with base name '{output_file_base.stem}'")
 
