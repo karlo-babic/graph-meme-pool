@@ -6,7 +6,7 @@ This repository contains the source code for the research paper:
 
 *Karlo Babić*
 
-(Link to paper: `[TODO`)
+(Link to paper: TODO)
 
 ## Abstract
 
