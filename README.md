@@ -14,7 +14,7 @@ This paper presents a computational framework for simulating the evolution of te
 
 ## Framework Overview
 
-The Graph Meme Pool (GMP) framework simulates the lifecycle of textual memes within a networked population. Key components include:
+The Graph Meme Pool (GMP) framework simulates the lifecycle of textual memes within a networked population. Main components include:
 
 1.  **Graph Representation:** Memes inhabit nodes in a directed, weighted graph. The graph structure (e.g., small-world, multiple small-worlds) is configurable.
 2.  **Propagation:** Memes spread stochastically between nodes based on edge weights.
@@ -55,7 +55,7 @@ The Graph Meme Pool (GMP) framework simulates the lifecycle of textual memes wit
 
 ## Configuration (`config.yaml`)
 
-The `config.yaml` file is central to controlling the simulation. Key sections include:
+The `config.yaml` file is central to controlling the simulation. Main sections include:
 
 *   `paths`: File paths for initial memes, save directories, log file.
 *   `graph_generation`: Type of graph (`small_world`, `small_worlds`, `example`), parameters (nodes, groups, probabilities), and initial meme assignment strategy.
