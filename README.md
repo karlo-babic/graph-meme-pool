@@ -69,17 +69,7 @@ The `config.yaml` file is central to controlling the simulation. Key sections in
 If you use this code or framework in your research, please cite the original paper:
 
 ```bibtex
-TODO
-@article{,
-  author    = {Karlo Babi{\'c}},
-  title     = {Selection in the Meme Pool: Graph-Based Evolution of Textual Content},
-  journal   = {[Insert Journal/Conference Proceedings Name Here]},
-  year      = {[Insert Year]},
-  % volume  = {},
-  % number  = {},
-  % pages   = {},
-  % doi     = {}
-}
+TODO - ECAI 2025 paper
 ```
 
 ## Semantic Space Evolution Animation
