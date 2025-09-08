@@ -303,7 +303,6 @@ class LLMService(LLMServiceInterface):
                  match = re.search(r'^(\d)', response) # Look for a digit at the beginning
                  if match:
                      score_val = int(match.group(1))
-                     print(score_val)
                      if 0 <= score_val <= max_score:
                          raw_scores[i] = score_val # Store valid score
                      else:

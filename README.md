@@ -58,7 +58,7 @@ The Graph Meme Pool (GMP) framework simulates the lifecycle of textual memes wit
 The `config.yaml` file is central to controlling the simulation. Main sections include:
 
 *   `paths`: File paths for initial memes, save directories, log file.
-*   `graph_generation`: Type of graph (`small_world`, `small_worlds`, `example`), parameters (nodes, groups, probabilities), and initial meme assignment strategy.
+*   `graph_generation`: Type of graph (`small_worlds`, `example`), parameters (nodes, groups, probabilities), and initial meme assignment strategy.
 *   `simulation`: Number of generations, selection threshold, fitness model choice (Hugging Face path or LLM-based).
 *   `llm`: Hugging Face path for the LLM, temperature settings for different operations, max new tokens, and prompts for mutation, merging, and LLM-based scoring.
 *   `embeddings`: Model paths for general and sentence-specific embeddings.

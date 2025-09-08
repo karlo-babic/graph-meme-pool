@@ -93,10 +93,8 @@ class GraphManagerStructural:
 
         if gen_type == 'example': # Simple example for testing
              self._create_example_graph()
-        elif gen_type == 'small_world':
-             self._create_small_world_graph(**params)
         elif gen_type == 'small_worlds':
-             self._create_multiple_small_worlds_graph(**params)
+             self._create_small_worlds_graph(**params)
         else:
             raise ValueError(f"Unknown graph generation type: {gen_type}")
 
@@ -125,25 +123,7 @@ class GraphManagerStructural:
         if 4 not in G: G.add_node(4, data=InfluenceNodeData(node_id=4, current_value=0, history=[0]))
         if 5 not in G: G.add_node(5, data=InfluenceNodeData(node_id=5, current_value=0, history=[0]))
 
-    def _create_small_world_graph(self, n: int, k: int, p: float, b: float, **kwargs):
-        G = self.graph
-        # Create graph topology
-        undirected_G = nx.watts_strogatz_graph(n, k, p, seed=self.random_seed)
-
-        # Add nodes
-        for i in range(n):
-            data = InfluenceNodeData(node_id=i, current_value=0, history=[0])
-            G.add_node(i, data=data)
-
-        # Add edges - with sorting
-        for u, v in sorted(list(undirected_G.edges())): # <--- SORT HERE
-            weight = round(random.uniform(0.1, 1.0), 2)
-            G.add_edge(u, v, weight=weight)
-            if random.random() < b:
-                bidir_weight = round(random.uniform(0.1, 1.0), 2)
-                G.add_edge(v, u, weight=bidir_weight)
-
-    def _create_multiple_small_worlds_graph(self, n: int, k: int, p: float, b: float, g: int, inter_p: float, **kwargs):
+    def _create_small_worlds_graph(self, n: int, k: int, p: float, b: float, g: int, inter_p: float, **kwargs):
         G = self.graph
         total_nodes = n * g
 

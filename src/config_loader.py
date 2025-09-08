@@ -11,7 +11,7 @@ DEFAULT_CONFIG = {
         'log_file': "simulation.log"
     },
     'graph_generation': {
-        'type': 'small_world',
+        'type': 'small_worlds',
         'initial_meme_assignment': 'random',
         'params': {'n': 20, 'k': 4, 'p': 0.3, 'b': 0.3, 'g': 2, 'inter_p': 0.1}
     },
