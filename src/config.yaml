@@ -55,7 +55,7 @@ llm:
     Output only the text rating.
 
 embeddings:
-  model_path: "bert-base-uncased" # For general embeddings (visualizations, etc.)
+  model_path: "bert-base-uncased" # For text embeddings (used in visualizations, etc.)
 
 visualization:
   # Per-generation plots
