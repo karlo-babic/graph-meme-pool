@@ -55,8 +55,7 @@ llm:
     Output only the text rating.
 
 embeddings:
-  model_path: "bert-base-uncased" # For general embeddings
-  sentence_model_path: "bert-base-uncased" # For semantic difference (SentenceTransformer compatible)
+  model_path: "bert-base-uncased" # For general embeddings (visualizations, etc.)
 
 visualization:
   # Per-generation plots

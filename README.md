@@ -61,7 +61,7 @@ The `config.yaml` file is central to controlling the simulation. Main sections i
 *   `graph_generation`: Type of graph (`small_worlds`, `example`), parameters (nodes, groups, probabilities), and initial meme assignment strategy.
 *   `simulation`: Number of generations, selection threshold, fitness model choice (Hugging Face path or LLM-based).
 *   `llm`: Hugging Face path for the LLM, temperature settings for different operations, max new tokens, and prompts for mutation, merging, and LLM-based scoring.
-*   `embeddings`: Model paths for general and sentence-specific embeddings.
+*   `embeddings`: Model paths for sentence embeddings.
 *   `visualization`: Toggles for various per-generation and final plots, and plot settings.
 
 ## Citation
