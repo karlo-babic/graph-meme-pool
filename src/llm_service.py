@@ -228,7 +228,7 @@ class LLMService(LLMServiceInterface):
             temperature = self.config['temperature_merge']
 
         preprompt = '<|system|>' + self.config['prompt_merge'] + '<|end|><|user|>'
-        prompts = [preprompt + f"{t1}\n{t2}\<|assistant|>" for t1, t2 in zip(texts1, texts2)]
+        prompts = [preprompt + f"{t1}\n{t2}<|assistant|>" for t1, t2 in zip(texts1, texts2)]
         stop_sequence = "<|end|>"
 
         def validation_fn(response):
@@ -245,7 +245,7 @@ class LLMService(LLMServiceInterface):
             temperature=temperature,
             stop_sequence=stop_sequence,
             validation_fn=validation_fn,
-            original_texts=texts1 # <<< Add this argument here
+            original_texts=texts1
         )
         logger.info("Merging finished.")
         return results
@@ -256,10 +256,10 @@ class LLMService(LLMServiceInterface):
             temperature = self.config['temperature_score']
 
         max_score = 9 # The scale used in the prompt
-        preprompt = self.config['prompt_score'] + "\n\nText: "
-        prompts = [preprompt + text + "\n\nRating:" for text in texts]
+        preprompt = '<|system|>' + self.config['prompt_score'] + '<|end|><|user|>'
+        prompts = [preprompt + f"{text}<|assistant|>Rating: " for text in texts]
         # No explicit stop sequence needed, relying on parsing the number
-        stop_sequence = "\n" # Or just rely on max_new_tokens
+        stop_sequence = "<|end|>" # Or just rely on max_new_tokens
 
         raw_scores = [None] * len(texts) # Store raw text results
         pending_indices = list(range(len(texts)))
@@ -303,6 +303,7 @@ class LLMService(LLMServiceInterface):
                  match = re.search(r'^(\d)', response) # Look for a digit at the beginning
                  if match:
                      score_val = int(match.group(1))
+                     print(score_val)
                      if 0 <= score_val <= max_score:
                          raw_scores[i] = score_val # Store valid score
                      else:
