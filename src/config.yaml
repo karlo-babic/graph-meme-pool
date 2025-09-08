@@ -9,11 +9,11 @@ graph_generation:
   type: 'small_worlds'  # 'example' or 'small_worlds'
   initial_meme_assignment: 'random'  # Initial assignment of memes to nodes: 'random' or 'structured'
   params:  # For small_worlds
+    g: 5       # Number of groups
     n: 40      # Nodes per group
     k: 4       # Each node is joined with its k nearest neighbors in ring topology
     p: 0.4     # Probability of rewiring each edge
     b: 0.8     # Probability of adding a backward edge
-    g: 5       # Number of groups
     inter_p: 0.05  # Probability of inter-group connection
 
 simulation:
