@@ -23,21 +23,27 @@ np.random.seed(2)
 class Visualizer:
     """Handles generation of all graph visualizations."""
 
-    def __init__(self, graph_manager: GraphManager, config: Dict):
+    def __init__(self, graph_manager: GraphManager, config: Dict, embedding_model: Optional[Any] = None):
         self.graph_manager = graph_manager
         self.vis_config = config['visualization']
         self.path_config = config['paths']
         self.embed_config = config['embeddings']
         self.vis_dir = Path(self.path_config['vis_dir'])
-        # Consider loading the embedding model once here or receiving it
-        self.embedding_model = None
-        if self.vis_config['draw_semantic_diff_per_gen'] or \
-           self.vis_config['draw_final_embs']: # Load if any embedding plot is enabled
-             try:
-                  self.embedding_model = emb_utils.get_sentence_transformer_model(self.embed_config['model_path'])
-             except Exception as e:
-                  logger.error(f"Failed to load embedding model for visualization: {e}. Embedding plots will be skipped.")
-                  self.embedding_model = None
+        self.embedding_model = embedding_model
+        
+        if self.embedding_model is None:
+            if self.vis_config['draw_semantic_diff_per_gen'] or \
+               self.vis_config['draw_final_embs'] or \
+               self.vis_config['plot_semantic_drift'] or \
+               self.vis_config['plot_semantic_centroid_distance_drift']:
+                try:
+                    logger.info("Visualizer loading its own embedding model.")
+                    self.embedding_model = emb_utils.get_sentence_transformer_model(self.embed_config['model_path'])
+                except Exception as e:
+                    logger.error(f"Failed to load embedding model for visualization: {e}. Embedding plots will be skipped.")
+                    self.embedding_model = None
+        else:
+            logger.info("Visualizer received a pre-loaded embedding model.")
 
 
     def _get_layout(self, G: nx.DiGraph, layout_type='kamada_kawai') -> Dict:
@@ -812,7 +818,6 @@ class Visualizer:
                     # Use max(0, size) to avoid errors with negative size if normalization goes wrong
                     radius = np.sqrt(max(0, size) / np.pi) * radius_scale_factor # Adjust scale factor as needed
 
-                    # --- MODIFIED PART: Use patches.Circle ---
                     circle = patches.Circle(
                         (cx, cy),
                         radius=radius,
@@ -824,7 +829,6 @@ class Visualizer:
                         zorder=5                 # Keep z-order
                     )
                     ax.add_patch(circle) # Add the circle patch to the axes
-                    # --- END MODIFIED PART ---
 
                     plotted_in_this_gen = True
                     current_gen_centroid_coords[group] = (cx, cy) # Store coords for line drawing
@@ -864,7 +868,9 @@ class Visualizer:
 
                 fig.tight_layout() # Adjust layout
 
-                gen_output_file = self.vis_dir / f"{output_file_base.stem}_{t:04d}.png"
+                sem_drift_dir = self.vis_dir / "semantic_drift"
+                sem_drift_dir.mkdir(exist_ok=True)
+                gen_output_file = sem_drift_dir / f"{output_file_base.stem}_{t:04d}.png"
                 #gen_output_file = self.vis_dir / f"{output_file_base.stem}.png"
                 try:
                     fig.savefig(gen_output_file, bbox_inches='tight', dpi=dpi)

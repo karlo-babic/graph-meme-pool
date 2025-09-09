@@ -1,7 +1,7 @@
 paths:
   init_memes: "init_memes.txt"
   graph_save_dir: "saved"
-  graph_basename: "potato_small_worlds"
+  graph_basename: "potato0_small_worlds"
   vis_dir: "vis"
   log_file: "simulation.log"
 
@@ -19,6 +19,7 @@ graph_generation:
 simulation:
   generations: 300
   threshold: 0.2  # Score ratio threshold for merge/mutate/keep decision
+  selection_strategy: 'fitness_similarity_product' # 'fitness' or 'fitness_similarity_product'
   initial_score: true  # Whether to score initial memes before first generation
   fitness_model_huggingpath: 'cardiffnlp/twitter-roberta-base-sentiment-latest' # path to a model on huggingface (e.g. 'cardiffnlp/twitter-roberta-base-sentiment-latest'), or empty string ('') -> using LLM with prompt_score below
 
@@ -55,7 +56,7 @@ llm:
     Output only the text rating.
 
 embeddings:
-  model_path: "bert-base-uncased" # For text embeddings (used in visualizations, etc.)
+  model_path: "sentence-transformers/all-roberta-large-v1" # "bert-base-uncased" # For text embeddings (used in visualizations, etc.)
 
 visualization:
   # Per-generation plots

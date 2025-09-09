@@ -7,6 +7,7 @@ import re
 from graph_manager import GraphManager
 from llm_service import LLMServiceInterface
 from fitness_model import FitnessModel
+from embeddings_utils import calculate_sentence_embeddings, calculate_cosine_similarity, get_sentence_transformer_model
 
 logger = logging.getLogger(__name__)
 
@@ -17,16 +18,24 @@ class EvolutionEngine:
                  graph_manager: GraphManager,
                  llm_service: LLMServiceInterface,
                  config: Dict,
-                 fitness_model: Optional[FitnessModel] = None):
+                 fitness_model: Optional[FitnessModel] = None,
+                 embedding_model: Optional[Any] = None):
         self.graph_manager = graph_manager
         self.llm_service = llm_service
-        self.fitness_model = fitness_model # Store the fitness model instance
+        self.fitness_model = fitness_model
+        self.embedding_model = embedding_model
         self.config = config['simulation']
-        self.llm_config = config['llm'] # For LLM-specific parameters
-        self.fitness_model_huggingpath = self.config['fitness_model_huggingpath'].lower() # Store for easy access
+        self.llm_config = config['llm']
+        self.fitness_model_huggingpath = self.config['fitness_model_huggingpath'].lower()
+        self.selection_strategy = self.config['selection_strategy']
         random.seed(config['seed'])
 
         # Validation
+        if self.selection_strategy == 'fitness_similarity_product' and not self.embedding_model:
+            logger.critical("EvolutionEngine initialized for 'fitness_similarity_product' strategy, but no embedding model was provided. This will fail.")
+            raise ValueError("Embedding model instance is required for 'fitness_similarity_product' strategy.")
+        logger.info(f"Using selection strategy: '{self.selection_strategy}'")
+
         if self.fitness_model_huggingpath and not self.fitness_model:
              logger.warning("EvolutionEngine initialized for 'custom' fitness type, but no FitnessModel instance provided. Scoring will likely fail.")
         elif not self.fitness_model_huggingpath and not self.llm_service:
@@ -198,6 +207,7 @@ class EvolutionEngine:
 
         all_memes_in_play: Set[str] = set()
         meme_score_cache: Dict[str, Optional[float]] = {}
+        meme_embedding_cache: Dict[str, np.ndarray] = {}
 
         # Collect memes and populate initial cache from existing node scores
         for node_id, data in nodes_data.items():
@@ -231,6 +241,16 @@ class EvolutionEngine:
         else:
              logger.debug(f"Generation {generation}: No new memes required scoring.")
 
+        # If using similarity, calculate and cache any missing embeddings
+        if self.selection_strategy == 'fitness_similarity_product':
+            memes_needing_embedding = list(all_memes_in_play - set(meme_embedding_cache.keys()))
+            if memes_needing_embedding:
+                logger.info(f"Generation {generation}: Calculating embeddings for {len(memes_needing_embedding)} unique memes.")
+                new_embeddings = calculate_sentence_embeddings(memes_needing_embedding, self.embedding_model)
+                for meme, embedding in zip(memes_needing_embedding, new_embeddings):
+                    meme_embedding_cache[meme] = embedding
+                logger.debug(f"Embedding cache updated. Size: {len(meme_embedding_cache)}")
+
         # Decide actions for each node based on cached scores
         updates_pending: Dict[Any, Dict[str, Any]] = {} # node_id -> {action: 'keep'|'mutate'|'merge', meme1: str, meme2: Optional[str]}
 
@@ -248,12 +268,48 @@ class EvolutionEngine:
             best_sender_id: Optional[int] = None
             best_received_meme: Optional[str] = None
             best_received_score: float = -1.0
-            for sender_node_id, meme, _ in data.received_memes:
-                score = meme_score_cache.get(meme)
-                if score is not None and score > best_received_score:
-                    best_sender_id = sender_node_id
-                    best_received_meme = meme
-                    best_received_score = score
+
+            # --- SELECTION LOGIC ---
+            if self.selection_strategy == 'fitness_similarity_product':
+                current_meme_embedding = meme_embedding_cache.get(current_meme)
+                if current_meme_embedding is None:
+                    logger.warning(f"Node {node_id}: Could not find embedding for current meme. Skipping selection.")
+                    continue
+                
+                best_candidate_meme: Optional[str] = None
+                best_candidate_sender_id: Optional[int] = None
+                best_combined_score: float = -1.0
+                
+                for sender_node_id, meme, _ in data.received_memes:
+                    received_fitness_score = meme_score_cache.get(meme)
+                    received_embedding = meme_embedding_cache.get(meme)
+
+                    if received_fitness_score is not None and received_embedding is not None:
+                        similarity = calculate_cosine_similarity(current_meme_embedding, received_embedding)
+                        similarity = (similarity + 1) / 2  # Normalize from range [-1, 1] to [0, 1]
+                        #print(f"{similarity:.2f}", "\n", current_meme, "\n", meme, "\n")
+                        if similarity < 0.9:
+                            continue # Discard low similarity memes
+                        combined_score = received_fitness_score * similarity
+
+                        if combined_score > best_combined_score:
+                            best_combined_score = combined_score
+                            best_candidate_meme = meme
+                            best_candidate_sender_id = sender_node_id
+                
+                if best_candidate_meme:
+                    best_received_meme = best_candidate_meme
+                    best_sender_id = best_candidate_sender_id
+                    best_received_score = meme_score_cache.get(best_received_meme, -1.0)
+
+            elif self.selection_strategy == 'fitness':
+                for sender_node_id, meme, _ in data.received_memes:
+                    fitness_score = meme_score_cache.get(meme)
+                    if fitness_score is not None and fitness_score > best_received_score:
+                        best_sender_id = sender_node_id
+                        best_received_meme = meme
+                        best_received_score = fitness_score
+            # --- END SELECTION LOGIC ---
 
             if best_received_meme is None:
                  continue

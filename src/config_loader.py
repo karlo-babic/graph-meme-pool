@@ -18,6 +18,7 @@ DEFAULT_CONFIG = {
     'simulation': {
         'generations': 50,
         'threshold': 0.2,
+        'selection_strategy': 'fitness',
         'initial_score': True,
         'fitness_model_huggingpath': ''
     },

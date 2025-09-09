@@ -9,6 +9,7 @@ from llm_service import LLMService
 from evolution_engine import EvolutionEngine
 from visualizer import Visualizer
 from fitness_model import FitnessModel
+import embeddings_utils as emb_utils
 
 # --- Logging Setup ---
 def setup_logging(config):
@@ -63,6 +64,7 @@ if __name__ == "__main__":
     graph_manager = None
     llm_service = None
     fitness_model_instance = None
+    embedding_model_instance = None
     evolution_engine = None
     visualizer = None
     start_generation_index = 0 # Default for new simulation
@@ -107,19 +109,30 @@ if __name__ == "__main__":
                 logger.error(f"Failed to load Fitness Model: {fm_error}. Simulation may proceed using only LLM for scoring if possible, or fail.", exc_info=True)
                 sys.exit(1)
 
+        # Load Embedding Model if needed by selection strategy or visualization
+        selection_strategy = config['simulation'].get('selection_strategy', 'best_fitness')
+        if selection_strategy == 'fitness_similarity_product' or any(config['visualization'].values()):
+            logger.info("Initializing Embedding Model...")
+            try:
+                embedding_model_instance = emb_utils.get_sentence_transformer_model(config['embeddings']['model_path'])
+            except Exception as emb_error:
+                logger.error(f"Failed to load Embedding Model: {emb_error}. This may cause errors in simulation or visualization.", exc_info=True)
+                if selection_strategy == 'fitness_similarity_product':
+                    sys.exit(1)
 
-        # --- Pass BOTH services (or None for fitness_model) to EvolutionEngine ---
+
+        # --- Pass ALL services to EvolutionEngine and Visualizer ---
         logger.info("Initializing Evolution Engine...")
         evolution_engine = EvolutionEngine(
             graph_manager=graph_manager,
             llm_service=llm_service,
             config=config,
-            fitness_model=fitness_model_instance # Pass the instance (or None)
+            fitness_model=fitness_model_instance,
+            embedding_model=embedding_model_instance
         )
 
-        # Visualizer loads embedding models internally if needed
         logger.info("Initializing Visualizer...")
-        visualizer = Visualizer(graph_manager, config)
+        visualizer = Visualizer(graph_manager, config, embedding_model=embedding_model_instance)
 
     except Exception as e:
         logger.critical(f"Failed to initialize components: {e}", exc_info=True)
