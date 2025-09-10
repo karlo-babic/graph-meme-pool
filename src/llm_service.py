@@ -49,8 +49,13 @@ class LLMServiceInterface(ABC):
         pass
 
     @abstractmethod
-    def merge(self, texts1: List[str], texts2: List[str], temperature: float) -> List[str]:
-        """Merges pairs of texts (adjusting text1 towards text2)."""
+    def merge_converge(self, texts1: List[str], texts2: List[str], temperature: float) -> List[str]:
+        """Merges pairs of texts using the 'converge' prompt."""
+        pass
+
+    @abstractmethod
+    def merge_influence(self, texts1: List[str], texts2: List[str], temperature: float) -> List[str]:
+        """Merges pairs of texts using the 'influence' prompt."""
         pass
 
     @abstractmethod
@@ -197,7 +202,7 @@ class LLMService(LLMServiceInterface):
             temperature = self.config['temperature_mutate']
 
         preprompt = '<|system|>' + self.config['prompt_mutate'] + '<|end|><|user|>'
-        prompts = [preprompt + f"{text}<|assistant|>" for text in texts]
+        prompts = [preprompt + f"{text}<|end|><|assistant|>" for text in texts]
         stop_sequence = "<|end|>"
 
         def validation_fn(response):
@@ -221,24 +226,24 @@ class LLMService(LLMServiceInterface):
         return results
 
 
-    def merge(self, texts1: List[str], texts2: List[str], temperature: Optional[float] = None) -> List[str]:
+    def merge_converge(self, texts1: List[str], texts2: List[str], temperature: Optional[float] = None) -> List[str]:
         if len(texts1) != len(texts2):
-            raise ValueError("merge requires equal length lists for texts1 and texts2")
+            raise ValueError("merge_converge requires equal length lists for texts1 and texts2")
         if temperature is None:
             temperature = self.config['temperature_merge']
 
-        preprompt = '<|system|>' + self.config['prompt_merge'] + '<|end|><|user|>'
-        prompts = [preprompt + f"{t1}\n{t2}<|assistant|>" for t1, t2 in zip(texts1, texts2)]
+        preprompt = '<|system|>' + self.config['prompt_merge_converge'] + '<|end|><|user|>'
+        prompts = [preprompt + f"Sentence 1: {t1}\nSentence 2: {t2}<|end|><|assistant|>New sentence: " for t1, t2 in zip(texts1, texts2)]
         stop_sequence = "<|end|>"
 
         def validation_fn(response):
             response = response.strip()
-            if not response or "<text" in response or "<new text>" in response or "##" in response or "**" in response or response[0] == '"':
+            if not response or "Sentence 1:" in response or "New sentence:" in response or "<text" in response or "<new text>" in response or "##" in response or "**" in response or response[0] == '"':
                 return False, response
             cleaned_response = remove_unfinished_sentence(response)
             return bool(cleaned_response), cleaned_response
 
-        logger.info(f"Merging {len(texts1)} pairs of texts...")
+        logger.info(f"Converge-merging {len(texts1)} pairs of texts...")
         results = self._generate_with_retry(
             prompts,
             max_new_tokens=self.config['max_new_tokens'],
@@ -247,9 +252,38 @@ class LLMService(LLMServiceInterface):
             validation_fn=validation_fn,
             original_texts=texts1
         )
-        logger.info("Merging finished.")
+        logger.info("Converge-merging finished.")
         return results
     
+    def merge_influence(self, texts1: List[str], texts2: List[str], temperature: Optional[float] = None) -> List[str]:
+        if len(texts1) != len(texts2):
+            raise ValueError("merge_influence requires equal length lists for texts1 and texts2")
+        if temperature is None:
+            temperature = self.config['temperature_merge']
+
+        preprompt = '<|system|>' + self.config['prompt_merge_influence'] + '<|end|><|user|>'
+        prompts = [preprompt + f"Sentence 1: {t1}\nSentence 2: {t2}<|end|><|assistant|>New sentence: " for t1, t2 in zip(texts1, texts2)]
+        stop_sequence = "<|end|>"
+
+        def validation_fn(response):
+            response = response.strip()
+            if not response or "Sentence 1:" in response or "New sentence:" in response or "<text" in response or "<new text>" in response or "##" in response or "**" in response or response[0] == '"':
+                return False, response
+            cleaned_response = remove_unfinished_sentence(response)
+            return bool(cleaned_response), cleaned_response
+
+        logger.info(f"Influence-merging {len(texts1)} pairs of texts...")
+        results = self._generate_with_retry(
+            prompts,
+            max_new_tokens=self.config['max_new_tokens'],
+            temperature=temperature,
+            stop_sequence=stop_sequence,
+            validation_fn=validation_fn,
+            original_texts=texts1
+        )
+        logger.info("Influence-merging finished.")
+        return results
+        
 
     def score(self, texts: List[str], temperature: Optional[float] = None) -> List[Optional[float]]:
         if temperature is None:

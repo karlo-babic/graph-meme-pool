@@ -1,0 +1,16 @@
+2025-09-10 08:06:27,367 - __main__ - INFO - Logging setup complete.
+2025-09-10 08:06:27,367 - __main__ - INFO - Configuration loaded from: config.yaml (or defaults)
+2025-09-10 08:06:27,367 - graph_manager - INFO - Initial meme assignment strategy: 'random'
+2025-09-10 08:06:27,367 - __main__ - INFO - Attempting to load existing graph from saved/potato0_small_worlds.json
+2025-09-10 08:06:27,399 - graph_manager - INFO - Graph loaded successfully from saved/potato0_small_worlds.json
+2025-09-10 08:06:27,399 - graph_manager - INFO - Loaded graph has 200 nodes and 760 edges.
+2025-09-10 08:06:27,399 - graph_manager - INFO - Loaded graph metadata indicates completion up to generation index: 299
+2025-09-10 08:06:27,399 - graph_manager - INFO - Attempting to load propagation history from saved/potato0_small_worlds_propagation.json
+2025-09-10 08:06:27,532 - graph_manager - INFO - Successfully loaded 32060 propagation events. Skipped 0 invalid entries.
+2025-09-10 08:06:27,534 - visualizer - INFO - Visualizer loading its own embedding model.
+2025-09-10 08:06:27,534 - embeddings_utils - INFO - Loading SentenceTransformer model: sentence-transformers/all-roberta-large-v1
+2025-09-10 08:06:27,534 - embeddings_utils - INFO - Using base transformer sentence-transformers/all-roberta-large-v1. Adding Pooling layer.
+2025-09-10 08:06:28,582 - embeddings_utils - INFO - Model sentence-transformers/all-roberta-large-v1 loaded.
+2025-09-10 08:06:28,796 - visualizer - INFO - Saved score history plot by initial meme to vis/plot_score_history_by_initial_meme.png
+2025-09-10 08:06:28,796 - __main__ - INFO - --- Visualization Finished ---
+2025-09-10 08:06:28,796 - __main__ - INFO - Total execution time: 1.44 seconds

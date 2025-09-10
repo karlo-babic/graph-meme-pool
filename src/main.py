@@ -214,12 +214,15 @@ if __name__ == "__main__":
 
     # Final Visualizations
     if visualizer: # Check if initialized
+        if config['visualization']['plot_final_score_history_by_group']:
+            logger.info("Generating final score history plot by group...")
+            visualizer.plot_score_history_bygroup()
+        if config['visualization']['plot_score_history_by_initial_meme']:
+            logger.info("Generating score history plot by initial meme...")
+            visualizer.plot_score_history_by_initial_meme()
         if config['visualization']['draw_final_embs']:
             logger.info("Generating final embedding visualization...")
             visualizer.draw_embs()
-        if config['visualization']['plot_final_score_history']:
-            logger.info("Generating final score history plot...")
-            visualizer.plot_score_history_bygroup()
         if config['visualization']['plot_semantic_drift']:
             logger.info("Generating semantic drift plots...")
             visualizer.draw_semantic_drift()

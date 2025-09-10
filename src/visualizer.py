@@ -442,6 +442,96 @@ class Visualizer:
         plt.close()
 
 
+    def plot_score_history_by_initial_meme(self):
+        """Plots the average meme score per generation, grouped by each node's initial meme."""
+        G = self.graph_manager.graph
+        if G.number_of_nodes() == 0: return
+
+        initial_meme_histories: Dict[str, List[List[Optional[float]]]] = defaultdict(list)
+        max_len = 0
+
+        for node_id, data in G.nodes(data=True):
+            node_data: Optional[MemeNodeData] = data.get('data')
+            if node_data and node_data.history and node_data.history_scores:
+                initial_meme = node_data.history[0]
+                scores = node_data.history_scores
+
+                initial_meme_histories[initial_meme].append(scores)
+                if len(scores) > max_len:
+                    max_len = len(scores)
+
+        if not initial_meme_histories:
+            logger.warning("No score history found to plot by initial meme.")
+            return
+
+        # Compute average score per time step for each initial meme group
+        avg_scores: Dict[str, np.ndarray] = {}
+        for initial_meme, histories in initial_meme_histories.items():
+            histories_padded = []
+            for h in histories:
+                padding_needed = max_len - len(h)
+                padded_history = h + ([np.nan] * padding_needed) if padding_needed > 0 else h[:max_len]
+                histories_padded.append(padded_history)
+
+            try:
+                with np.errstate(invalid='ignore'): # Suppress mean of empty slice warning
+                    avg_scores[initial_meme] = np.nanmean(np.array(histories_padded, dtype=float), axis=0)
+            except Exception as e:
+                logger.error(f"Error calculating average scores for initial meme '{initial_meme[:30]}...': {e}")
+                continue
+
+        # Plotting
+        plt.figure(figsize=(12, 7))
+        num_initial_memes = len(avg_scores)
+        colors = plt.cm.get_cmap('tab10', num_initial_memes)
+        line_styles = ['-', '--', ':', '-.', (0, (5, 5))]
+        base_linewidth = 2
+        background_linewidth_increase = 1
+        background_alpha = 0.1
+
+        sorted_initial_memes = sorted(avg_scores.keys())
+
+        for i, initial_meme in enumerate(sorted_initial_memes):
+            avg_history = avg_scores[initial_meme]
+            first_valid_index = np.where(~np.isnan(avg_history))[0]
+            if len(first_valid_index) > 0:
+                start_index = first_valid_index[0]
+                current_style = line_styles[i % len(line_styles)]
+                current_color = colors(i)
+                
+                label_text = initial_meme[:40] + '...' if len(initial_meme) > 40 else initial_meme
+                
+                plt.plot(range(start_index, len(avg_history)), avg_history[start_index:],
+                         color='black',
+                         alpha=background_alpha,
+                         linewidth=base_linewidth + background_linewidth_increase,
+                         linestyle='-',
+                         zorder=1,
+                         label=None)
+
+                plt.plot(range(start_index, len(avg_history)), avg_history[start_index:],
+                         color=current_color,
+                         linestyle=current_style,
+                         linewidth=base_linewidth,
+                         label=f'"{label_text}"',
+                         zorder=2)
+            else:
+                logger.warning(f"Initial meme '{initial_meme[:30]}...' has no valid score data to plot.")
+
+        plt.xlabel("Generation")
+        plt.ylabel("Average Meme Score")
+        plt.legend(loc='best', fontsize='small')
+        plt.grid(True, linestyle='--', alpha=0.6)
+        plt.ylim(0, 1)
+
+        filename = self.vis_dir / "plot_score_history_by_initial_meme.png"
+        try:
+            plt.savefig(filename, bbox_inches='tight', dpi=self.vis_config['dpi'])
+            logger.info(f"Saved score history plot by initial meme to {filename}")
+        except Exception as e:
+            logger.error(f"Failed to save score history plot by initial meme {filename}: {e}")
+        plt.close()
+
 
 
     # def draw_semantic_drift(self, num_generations: int = -1, visible_groups: Optional[List[Any]] = None):

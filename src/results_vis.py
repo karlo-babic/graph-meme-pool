@@ -87,7 +87,8 @@ visualizer = Visualizer(graph_manager, config)
 
 
 #visualizer.plot_score_history_bygroup()
-visualizer.draw_semantic_drift()
+visualizer.plot_score_history_by_initial_meme()
+#visualizer.draw_semantic_drift()
 #visualizer.plot_semantic_centroid_distance_drift()
 #visualizer.generate_centroid_closest_meme_table()
 #visualizer.draw_embs()

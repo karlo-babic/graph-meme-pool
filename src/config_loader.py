@@ -19,6 +19,8 @@ DEFAULT_CONFIG = {
         'generations': 50,
         'threshold': 0.2,
         'selection_strategy': 'fitness',
+        'merge_converge_similarity_threshold': 0.9,
+        'merge_influence_similarity_threshold': 0.6,
         'initial_score': True,
         'fitness_model_huggingpath': ''
     },
@@ -37,7 +39,8 @@ DEFAULT_CONFIG = {
         'draw_score_per_gen': True,
         'draw_semantic_diff_per_gen': True,
         'draw_final_embs': True,
-        'plot_final_score_history': True,
+        'plot_final_score_history_by_group': True,
+        'plot_score_history_by_initial_meme': True,
         'node_min_size': 20,
         'node_max_size': 400,
         'edge_base_thickness': 1.0,
