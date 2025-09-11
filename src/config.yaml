@@ -34,13 +34,13 @@ llm:
   max_new_tokens: 50  # Hardcoded 1 for scoring
   prompt_mutate: |
     Make a very small change to the user's sentence that slightly changes its meaning, style, or tone. Keep the topic and length about the same.
-    Output only the changed sentence.
+    Output ONLY the changed sentence.
   prompt_merge_converge: |
     Change the user's sentence to be closer in meaning to the example sentence. Keep the user's topic and length about the same.
-    Output only the changed sentence.
+    Output ONLY the changed sentence.
   prompt_merge_influence: |
     Change the user's sentence by reshaping its meaning influenced by the example sentence, while ignoring the example sentence's topic. Keep the user's topic and length about the same.
-    Output only the changed sentence.
+    Output ONLY the changed sentence.
   prompt_score: |
     Rigorously evaluate the user's text for virality on a strict 0 to 9 scale based on these criteria:
     - Immediate attention-grabbing appeal

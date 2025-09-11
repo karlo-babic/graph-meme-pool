@@ -34,9 +34,18 @@ def remove_unfinished_sentence(text: str) -> str:
             return text
     return text
 
+def clean_text(text: str) -> str:
+    """Basic cleaning of text."""
+    text = text.strip()
+    # Remove excessive whitespace
+    text = re.sub(r'\s+', ' ', text)
+    # Remove " at start/end
+    text = text.strip('"')
+    return text
+
 def is_valid_response(text: str) -> bool:
     """Basic validation to check if the response is valid."""
-    if len(text) < 5 or text[0] == '"':
+    if len(text) < 5 or "**" in text:
         return False
     return True
 
@@ -212,7 +221,7 @@ class LLMService(LLMServiceInterface):
         stop_sequence = "<|end|>"
 
         def validation_fn(response):
-            response = response.strip()
+            response = clean_text(response)
             if not is_valid_response(response):
                 return False, response
             cleaned_response = remove_unfinished_sentence(response)
@@ -252,7 +261,7 @@ class LLMService(LLMServiceInterface):
         stop_sequence = "<|end|>"
 
         def validation_fn(response):
-            response = response.strip()
+            response = clean_text(response)
             if not is_valid_response(response):
                 return False, response
             cleaned_response = remove_unfinished_sentence(response)
@@ -291,7 +300,7 @@ class LLMService(LLMServiceInterface):
         stop_sequence = "<|end|>"
 
         def validation_fn(response):
-            response = response.strip()
+            response = clean_text(response)
             if not is_valid_response(response):
                 return False, response
             cleaned_response = remove_unfinished_sentence(response)
