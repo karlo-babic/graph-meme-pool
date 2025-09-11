@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-# Helper function (consider moving to a utils module if it grows)
+# Helper functions (consider moving to a utils module if it grows)
 def remove_unfinished_sentence(text: str) -> str:
     """Removes potentially incomplete sentence fragments at the end."""
     text = text.strip()
@@ -33,6 +33,12 @@ def remove_unfinished_sentence(text: str) -> str:
             # For now, return original as it might be a title or single phrase
             return text
     return text
+
+def is_valid_response(text: str) -> bool:
+    """Basic validation to check if the response is valid."""
+    if len(text) < 5 or text[0] == '"':
+        return False
+    return True
 
 
 class LLMServiceInterface(ABC):
@@ -207,8 +213,7 @@ class LLMService(LLMServiceInterface):
 
         def validation_fn(response):
             response = response.strip()
-            # More robust check for tags or unwanted artifacts
-            if not response or "<text>" in response or "<modified text>" in response or "##" in response or "**" in response or response[0] == '"':
+            if not is_valid_response(response):
                 return False, response
             cleaned_response = remove_unfinished_sentence(response)
             return bool(cleaned_response), cleaned_response # Ensure not empty after cleaning
@@ -232,13 +237,23 @@ class LLMService(LLMServiceInterface):
         if temperature is None:
             temperature = self.config['temperature_merge']
 
-        preprompt = '<|system|>' + self.config['prompt_merge_converge'] + '<|end|><|user|>'
-        prompts = [preprompt + f"Sentence 1: {t1}\nSentence 2: {t2}<|end|><|assistant|>New sentence: " for t1, t2 in zip(texts1, texts2)]
+        preprompt_base = self.config['prompt_merge_converge']
+        prompts = [
+            (
+                "<|system|>"
+                + f"Example sentence: {t2}\n"
+                + preprompt_base
+                + "<|end|><|user|>"
+                + t1
+                + "<|end|><|assistant|>Changed sentence: "
+            )
+            for t1, t2 in zip(texts1, texts2)
+        ]
         stop_sequence = "<|end|>"
 
         def validation_fn(response):
             response = response.strip()
-            if not response or "Sentence 1:" in response or "New sentence:" in response or "<text" in response or "<new text>" in response or "##" in response or "**" in response or response[0] == '"':
+            if not is_valid_response(response):
                 return False, response
             cleaned_response = remove_unfinished_sentence(response)
             return bool(cleaned_response), cleaned_response
@@ -261,13 +276,23 @@ class LLMService(LLMServiceInterface):
         if temperature is None:
             temperature = self.config['temperature_merge']
 
-        preprompt = '<|system|>' + self.config['prompt_merge_influence'] + '<|end|><|user|>'
-        prompts = [preprompt + f"Sentence 1: {t1}\nSentence 2: {t2}<|end|><|assistant|>New sentence: " for t1, t2 in zip(texts1, texts2)]
+        preprompt_base = self.config['prompt_merge_influence']
+        prompts = [
+            (
+                "<|system|>"
+                + f"Example sentence: {t2}\n"
+                + preprompt_base
+                + "<|end|><|user|>"
+                + t1
+                + "<|end|><|assistant|>Changed sentence: "
+            )
+            for t1, t2 in zip(texts1, texts2)
+        ]
         stop_sequence = "<|end|>"
 
         def validation_fn(response):
             response = response.strip()
-            if not response or "Sentence 1:" in response or "New sentence:" in response or "<text" in response or "<new text>" in response or "##" in response or "**" in response or response[0] == '"':
+            if not is_valid_response(response):
                 return False, response
             cleaned_response = remove_unfinished_sentence(response)
             return bool(cleaned_response), cleaned_response

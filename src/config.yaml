@@ -1,7 +1,7 @@
 paths:
   init_memes: "init_memes.txt"
   graph_save_dir: "saved"
-  graph_basename: "potato1_small_worlds"
+  graph_basename: "potato_friends_0_small_worlds"
   vis_dir: "vis"
   log_file: "simulation.log"
 
@@ -17,7 +17,7 @@ graph_generation:
     inter_p: 0.05  # Probability of inter-group connection
 
 simulation:
-  generations: 300
+  generations: 50
   threshold: 0.2  # Score ratio threshold for merge/mutate/keep decision
   selection_strategy: 'fitness_similarity_product' # 'fitness' or 'fitness_similarity_product'
   merge_converge_similarity_threshold: 0.9 # Min similarity for converge merge
@@ -29,18 +29,18 @@ llm:
   huggingpath: "microsoft/Phi-3-mini-4k-instruct"
   # api_key: "YOUR_API_KEY"  # Optional: Add API key if needed for a certain model/API
   temperature_mutate: 0.7
-  temperature_merge: 0.5
+  temperature_merge: 0.6
   temperature_score: 0.2
   max_new_tokens: 50  # Hardcoded 1 for scoring
   prompt_mutate: |
-    Make a very small change to the sentence that slightly changes its meaning, style, or tone. Keep the topic and length about the same.
+    Make a very small change to the user's sentence that slightly changes its meaning, style, or tone. Keep the topic and length about the same.
     Output only the changed sentence.
   prompt_merge_converge: |
-    Change sentence 1 to be closer in meaning to sentence 2. Keep the topic and length about the same (as in sentence 1).
-    Output only the new sentence.
+    Change the user's sentence to be closer in meaning to the example sentence. Keep the user's topic and length about the same.
+    Output only the changed sentence.
   prompt_merge_influence: |
-    Change sentence 1 by reshaping its meaning in a new way influenced by sentence 2, while ignoring sentence 2’s topic. Keep the topic and length about the same (as in sentence 1).
-    Output only the new sentence.
+    Change the user's sentence by reshaping its meaning influenced by the example sentence, while ignoring the example sentence's topic. Keep the user's topic and length about the same.
+    Output only the changed sentence.
   prompt_score: |
     Rigorously evaluate the user's text for virality on a strict 0 to 9 scale based on these criteria:
     - Immediate attention-grabbing appeal
