@@ -112,23 +112,18 @@ class GraphManager:
         meme_ids = [-1] * num_nodes # Initialize with placeholder
 
         if strategy == 'random':
-            logger.debug(f"Calculating 'random' (balanced/shuffled) assignment for {num_nodes} nodes using {num_initial_memes} memes.")
+            logger.debug(f"Calculating 'random' (equitably distributed and shuffled) assignment for {num_nodes} nodes using {num_initial_memes} memes.")
+            
+            # Create a balanced, sequential list of meme IDs
+            # This ensures the most equitable distribution possible (counts differ by at most 1)
+            balanced_ids = [i % num_initial_memes for i in range(num_nodes)]
 
-            # Create a list with approximately equal counts of each meme index
-            ids_to_shuffle = []
-            base_count = num_nodes // num_initial_memes
-            remainder = num_nodes % num_initial_memes
-
-            for i in range(num_initial_memes):
-                ids_to_shuffle.extend([i] * base_count) # Add base count for each meme
-            # Distribute the remainder among the first 'remainder' memes
-            ids_to_shuffle.extend(range(remainder))
-
-            # Shuffle the list using the instance's seed for reproducibility
+            # Shuffle the list to randomize node assignment, using the instance's seed for reproducibility
             local_random = random.Random(self.random_seed)
-            local_random.shuffle(ids_to_shuffle)
-            meme_ids = ids_to_shuffle
-            logger.debug(f"Shuffled meme IDs for random assignment: {meme_ids[:20]}...") # Log first few
+            local_random.shuffle(balanced_ids)
+            meme_ids = balanced_ids
+            
+            logger.debug(f"Shuffled meme IDs for random assignment: {meme_ids[:20]}...")
 
         elif strategy == 'structured':
             if num_groups is not None and nodes_per_group is not None and num_groups > 0 and nodes_per_group > 0:
@@ -721,7 +716,7 @@ class GraphManager:
             )
             self.graph.add_node(new_id, data=new_data)
 
-        ratio = self.config.get('dynamic_graph', {}).get('division', {}).get('connection_subset_ratio', 0.6)
+        ratio = self.config.get('dynamic_graph', {}).get('division', {}).get('connection_subset_ratio')
         
         in_connections = list(self.graph.in_edges(node_id, data=True))
         out_connections = list(self.graph.out_edges(node_id, data=True))

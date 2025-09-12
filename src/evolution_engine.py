@@ -279,12 +279,12 @@ class EvolutionEngine:
             if best_received_meme is None:
                 continue
             
-            self.graph_manager.record_propagation(generation, best_sender_id, node_id, best_received_meme)
             score_ratio = best_received_score / (current_meme_score + 1e-9)
 
             # --- MERGE DECISION LOGIC ---
             action_type = "keep"
-            if 1 - threshold <= score_ratio <= 1 + threshold:
+            #if 1 - threshold <= score_ratio <= 1 + threshold:
+            if 1 - threshold <= score_ratio:
                 current_embedding = meme_embedding_cache.get(current_meme)
                 received_embedding = meme_embedding_cache.get(best_received_meme)
                 if current_embedding is not None and received_embedding is not None:
@@ -296,11 +296,12 @@ class EvolutionEngine:
                     elif similarity >= influence_thresh:
                         action_type = "merge_influence"
                         merge_influence_candidates.append((current_meme, best_received_meme))
-            elif score_ratio > 1 + threshold:
-                action_type = "mutate"
-                mutation_candidates.append(best_received_meme)
+            #elif score_ratio > 1 + threshold:
+            #    action_type = "mutate"
+            #    mutation_candidates.append(best_received_meme)
 
             if action_type != "keep":
+                self.graph_manager.record_propagation(generation, best_sender_id, node_id, best_received_meme)
                 updates_pending[node_id] = {
                     "action": action_type,
                     "current_meme": current_meme,

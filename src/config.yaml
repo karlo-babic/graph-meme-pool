@@ -10,7 +10,7 @@ graph_generation:
   initial_meme_assignment: 'random'  # Initial assignment of memes to nodes: 'random' or 'structured'
   params:  # For small_worlds
     g: 1       # Number of groups
-    n: 16      # Nodes per group
+    n: 20      # Nodes per group
     k: 4       # Each node is joined with its k nearest neighbors in ring topology
     p: 0.4     # Probability of rewiring each edge
     b: 0.8     # Probability of adding a backward edge
@@ -18,22 +18,22 @@ graph_generation:
 
 dynamic_graph:
   enabled: true
-  initial_static_generations: 5 # No dynamic changes for the first n generations
+  initial_static_generations: 20 # No dynamic changes for the first n generations
   check_every_n_generations: 1
   fusion:
     enabled: true
-    similarity_threshold: 0.99 # Min similarity for fusion
+    similarity_threshold: 0.999 # Min similarity for fusion
   division:
     enabled: true
-    max_graph_nodes: 250
+    max_graph_nodes: 300
     # To consider division, a node must have at least this many in/out connections
     min_in_degree: 2
     min_out_degree: 2
-    fitness_top_percent: 0.05 # Top % fittest nodes are candidates
-    connection_subset_ratio: 0.6
+    fitness_top_percent: 0.1 # Top % fittest nodes are candidates
+    connection_subset_ratio: 0.5
 
 simulation:
-  generations: 50
+  generations: 500
   threshold: 0.2  # Score ratio threshold for merge/mutate/keep decision
   selection_strategy: 'fitness_similarity_product' # 'fitness' or 'fitness_similarity_product'
   merge_converge_similarity_threshold: 0.9 # Min similarity for converge merge
@@ -45,7 +45,7 @@ llm:
   huggingpath: "microsoft/Phi-3-mini-4k-instruct"
   # api_key: "YOUR_API_KEY"  # Optional: Add API key if needed for a certain model/API
   temperature_mutate: 0.7
-  temperature_merge: 0.5
+  temperature_merge: 0.4
   temperature_score: 0.2
   max_new_tokens: 50  # Hardcoded 1 for scoring
   prompt_mutate: |
@@ -55,7 +55,8 @@ llm:
     Change the user's sentence to be closer in meaning to the example sentence. Keep the user's topic and length about the same.
     Output ONLY the changed sentence.
   prompt_merge_influence: |
-    Change the user's sentence by reshaping its meaning influenced by the example sentence, while ignoring the example sentence's topic. Keep the user's topic and length about the same.
+    Make a very small change to the user's sentence that slightly changes its meaning, style, or tone. Keep the topic and length about the same.
+    Use the example sentence only as inspiration, but do NOT copy or switch to its topic.
     Output ONLY the changed sentence.
   prompt_score: |
     Rigorously evaluate the user's text for virality on a strict 0 to 9 scale based on these criteria:
