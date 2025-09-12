@@ -1,16 +1,8 @@
 # Graph Meme Pool (GMP)
 
-This repository ([v1 branch](https://github.com/karlo-babic/graph-meme-pool/tree/v1)) contains the source code for the research paper:
+Graph Meme Pool (GMP) is a computational framework for simulating the evolution of text by modeling textual units as memes - replicable cultural information analogous to genes. Memes occupy nodes in a graph, where edges represent pathways of interaction. Memes propagate probabilistically along these edges based on weights. Following propagation, a fitness function evaluates each meme, guiding a selection process based on configurable criteria. This selection determines whether Large Language Models (LLMs) then introduce variation by mutating or merging memes, adapting content during transmission. Through iterative cycles of propagation, selection, and variation, the system models how memes evolve, spread, and adapt within networked populations.
 
-**"Selection in the Meme Pool: Graph-Based Evolution of Textual Content"**
-
-*Karlo Babić*
-
-(Link to paper: TODO)
-
-## Abstract
-
-This paper presents a computational framework for simulating the evolution of text by modeling textual units as memes - replicable cultural information analogous to genes. Memes occupy nodes in a graph, where edges represent pathways of interaction. Memes propagate probabilistically along these edges based on weights. Following propagation, a fitness function evaluates each meme, guiding a selection process based on configurable criteria. This selection determines whether Large Language Models (LLMs) then introduce variation by mutating or merging memes, adapting content during transmission. Through iterative cycles of propagation, selection, and variation, the system models how memes evolve, spread, and adapt within networked populations.
+([V1 branch](https://github.com/karlo-babic/graph-meme-pool/tree/v1)) contains the source code for the research paper: **"Selection in the Meme Pool: Graph-Based Evolution of Textual Content"**
 
 ## Framework Overview
 

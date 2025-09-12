@@ -1,7 +1,7 @@
 paths:
   init_memes: "init_memes.txt"
   graph_save_dir: "saved"
-  graph_basename: "potato_friends_0_small_worlds"
+  graph_basename: "d_potato_friends_0_small_worlds"
   vis_dir: "vis"
   log_file: "simulation.log"
 
@@ -9,12 +9,28 @@ graph_generation:
   type: 'small_worlds'  # 'example' or 'small_worlds'
   initial_meme_assignment: 'random'  # Initial assignment of memes to nodes: 'random' or 'structured'
   params:  # For small_worlds
-    g: 5       # Number of groups
-    n: 40      # Nodes per group
+    g: 1       # Number of groups
+    n: 16      # Nodes per group
     k: 4       # Each node is joined with its k nearest neighbors in ring topology
     p: 0.4     # Probability of rewiring each edge
     b: 0.8     # Probability of adding a backward edge
     inter_p: 0.05  # Probability of inter-group connection
+
+dynamic_graph:
+  enabled: true
+  initial_static_generations: 5 # No dynamic changes for the first n generations
+  check_every_n_generations: 1
+  fusion:
+    enabled: true
+    similarity_threshold: 0.99 # Min similarity for fusion
+  division:
+    enabled: true
+    max_graph_nodes: 250
+    # To consider division, a node must have at least this many in/out connections
+    min_in_degree: 2
+    min_out_degree: 2
+    fitness_top_percent: 0.05 # Top % fittest nodes are candidates
+    connection_subset_ratio: 0.6
 
 simulation:
   generations: 50
@@ -29,7 +45,7 @@ llm:
   huggingpath: "microsoft/Phi-3-mini-4k-instruct"
   # api_key: "YOUR_API_KEY"  # Optional: Add API key if needed for a certain model/API
   temperature_mutate: 0.7
-  temperature_merge: 0.6
+  temperature_merge: 0.5
   temperature_score: 0.2
   max_new_tokens: 50  # Hardcoded 1 for scoring
   prompt_mutate: |
@@ -68,14 +84,14 @@ embeddings:
 visualization:
   # Per-generation plots
   draw_change_per_gen: true
-  draw_score_per_gen: false
+  draw_score_per_gen: true
   draw_semantic_diff_per_gen: false
   # Final plots
   draw_final_embs: true
   plot_final_score_history_by_group: true
   plot_score_history_by_initial_meme: true
-  plot_semantic_drift: true
-  plot_semantic_centroid_distance_drift: true
+  plot_semantic_drift: false
+  plot_semantic_centroid_distance_drift: false
   # Plot settings
   node_min_size: 20
   node_max_size: 400

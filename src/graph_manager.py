@@ -6,15 +6,18 @@ import logging
 from pathlib import Path
 from typing import List, Any, Optional, Dict
 from networkx.readwrite import json_graph
+import math
 
 from data_structures import MemeNodeData, PropagationEvent
+from embeddings_utils import EmbeddingManager
+from llm_service import LLMServiceInterface
 
 logger = logging.getLogger(__name__)
 
 class GraphManager:
     """Manages the NetworkX graph, node data, persistence, and propagation history."""
 
-    def __init__(self, config: Dict):
+    def __init__(self, config: Dict, embedding_manager: EmbeddingManager, llm_service: LLMServiceInterface):
         self.config = config
         self.graph = nx.DiGraph()
         self.propagation_history: List[PropagationEvent] = []
@@ -22,6 +25,9 @@ class GraphManager:
         random.seed(self.random_seed)
         self.assignment_strategy = config['graph_generation']['initial_meme_assignment']
         self.loaded_last_generation: int = -1
+        self.embedding_manager = embedding_manager
+        self.llm_service = llm_service
+        self.next_node_id = 0
         logger.info(f"Initial meme assignment strategy: '{self.assignment_strategy}'")
 
     def _load_initial_memes(self) -> List[str]:
@@ -524,3 +530,207 @@ class GraphManager:
     def get_propagation_history(self) -> List[PropagationEvent]:
         """Returns the recorded propagation history."""
         return self.propagation_history
+    
+    # --- Dynamic Graph ---  TODO: Refactor into separate class?
+
+    def _get_next_node_id(self) -> int:
+        if self.next_node_id == 0:
+            # Initialize if not set
+            self.next_node_id = max(list(self.graph.nodes())) + 1 if self.graph.nodes() else 0
+        new_id = self.next_node_id
+        self.next_node_id += 1
+        return new_id
+
+    def update_graph_topology(self, generation: int):
+        dyn_config = self.config.get('dynamic_graph', {})
+        if not dyn_config.get('enabled', False):
+            return
+
+        initial_static_gens = dyn_config.get('initial_static_generations', 0)
+        if generation < initial_static_gens:
+            return
+
+        if generation % dyn_config.get('check_every_n_generations', 1) != 0:
+            return
+
+        logger.info(f"Generation {generation}: Checking for graph dynamic updates.")
+        if dyn_config.get('fusion', {}).get('enabled', False):
+            self.perform_fusion_check()
+        if dyn_config.get('division', {}).get('enabled', False):
+            self.perform_division_check()
+
+    def perform_fusion_check(self):
+        fusion_config = self.config.get('dynamic_graph', {}).get('fusion', {})
+        threshold = fusion_config.get('similarity_threshold', 0.95)
+        
+        potential_fusions = []
+        all_nodes_data = self.get_all_nodes_data()
+        
+        for u, v in self.graph.edges():
+            data_u = all_nodes_data.get(u)
+            data_v = all_nodes_data.get(v)
+            if data_u and data_v:
+                similarity = self.embedding_manager.get_similarity(data_u.current_meme, data_v.current_meme)
+                if similarity > threshold:
+                    potential_fusions.append((similarity, u, v))
+        
+        potential_fusions.sort(key=lambda x: x[0], reverse=True)
+        
+        fused_nodes = set()
+        for similarity, u, v in potential_fusions:
+            if u not in fused_nodes and v not in fused_nodes:
+                self._fuse_nodes(u, v)
+                fused_nodes.add(u)
+                fused_nodes.add(v)
+
+    def _fuse_nodes(self, u: Any, v: Any):
+        data_u = self.get_node_data(u)
+        data_v = self.get_node_data(v)
+        if not data_u or not data_v: return
+
+        score_u = data_u.current_meme_score or 0
+        score_v = data_v.current_meme_score or 0
+
+        parent1_id, parent2_id = (u, v) if score_u >= score_v else (v, u)
+        parent1_data = self.get_node_data(parent1_id)
+        
+        new_id = self._get_next_node_id()
+        new_data = MemeNodeData(
+            node_id=new_id,
+            current_meme=parent1_data.current_meme,
+            current_meme_score=parent1_data.current_meme_score,
+            group=parent1_data.group,
+            parents=[parent1_id, parent2_id]
+        )
+        self.graph.add_node(new_id, data=new_data)
+        
+        in_edges_map = {}
+        for pred, _, data in self.graph.in_edges(u, data=True):
+            in_edges_map[pred] = data
+        for pred, _, data in self.graph.in_edges(v, data=True):
+            in_edges_map[pred] = data
+
+        out_edges_map = {}
+        for _, succ, data in self.graph.out_edges(u, data=True):
+            out_edges_map[succ] = data
+        for _, succ, data in self.graph.out_edges(v, data=True):
+            out_edges_map[succ] = data
+
+        for pred, data in in_edges_map.items():
+            if pred not in (u, v):
+                self.graph.add_edge(pred, new_id, **data)
+        
+        for succ, data in out_edges_map.items():
+            if succ not in (u, v):
+                self.graph.add_edge(new_id, succ, **data)
+        
+        self.graph.remove_node(u)
+        self.graph.remove_node(v)
+        logger.info(f"Fused nodes {u} and {v} into new node {new_id}.")
+
+    def perform_division_check(self):
+        div_config = self.config.get('dynamic_graph', {}).get('division', {})
+        max_nodes = div_config.get('max_graph_nodes', 250)
+        
+        if self.graph.number_of_nodes() >= max_nodes:
+            return
+
+        top_percent = div_config.get('fitness_top_percent', 0.05)
+        num_candidates = math.ceil(self.graph.number_of_nodes() * top_percent)
+        num_candidates = max(1, num_candidates)
+
+        nodes_with_scores = [
+            (node_id, data.current_meme_score or 0)
+            for node_id, data in self.get_all_nodes_data().items()
+        ]
+        nodes_with_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        candidates = []
+        for node_id, score in nodes_with_scores[:num_candidates]:
+            if self.graph.in_degree(node_id) >= div_config.get('min_in_degree', 2) and \
+               self.graph.out_degree(node_id) >= div_config.get('min_out_degree', 2):
+                candidates.append(node_id)
+        
+        for node_id in candidates:
+            if self.graph.number_of_nodes() >= max_nodes -1: # -1 because we add 2 and remove 1
+                break
+            self._divide_node(node_id)
+
+    def _assign_split_connections(self, connections: list, ratio: float, new_ids: list, direction: str):
+        """Helper to partition and assign connections to two new nodes."""
+        if not connections:
+            return
+
+        total_connections = len(connections)
+        num_per_node = math.ceil(total_connections * ratio)
+
+        # Ensure we don't try to assign more connections than exist
+        num_per_node = min(total_connections, num_per_node)
+
+        # Calculate the size of the shared set and unique sets
+        num_shared = max(0, (2 * num_per_node) - total_connections)
+        num_unique = num_per_node - num_shared
+        
+        shuffled_connections = random.sample(connections, k=total_connections)
+
+        # Partition the shuffled list
+        shared_set = shuffled_connections[:num_shared]
+        unique_set_1 = shuffled_connections[num_shared : num_shared + num_unique]
+        unique_set_2 = shuffled_connections[num_shared + num_unique : num_shared + num_unique + num_unique]
+        
+        # Any remaining connections (due to ceil() rounding) must be assigned to preserve them.
+        # Add them to the shared set to distribute them evenly.
+        remaining_set = shuffled_connections[num_shared + (2 * num_unique):]
+        shared_set.extend(remaining_set)
+        
+        connections_for_node1 = shared_set + unique_set_1
+        connections_for_node2 = shared_set + unique_set_2
+
+        # Add the new edges to the graph
+        if direction == 'in':
+            for pred, _, data in connections_for_node1:
+                self.graph.add_edge(pred, new_ids[0], **data)
+            for pred, _, data in connections_for_node2:
+                self.graph.add_edge(pred, new_ids[1], **data)
+        elif direction == 'out':
+            for _, succ, data in connections_for_node1:
+                self.graph.add_edge(new_ids[0], succ, **data)
+            for _, succ, data in connections_for_node2:
+                self.graph.add_edge(new_ids[1], succ, **data)
+
+    def _divide_node(self, node_id: Any):
+        original_data = self.get_node_data(node_id)
+        if not original_data: return
+
+        mutated_memes = self.llm_service.mutate([original_data.current_meme] * 2)
+        if not mutated_memes or len(mutated_memes) < 2 or mutated_memes[0] == mutated_memes[1]:
+            logger.warning(f"Division of node {node_id} failed: LLM mutation did not produce two distinct memes.")
+            return
+
+        all_weights = [d['weight'] for _, _, d in self.graph.in_edges(node_id, data=True) if 'weight' in d] + \
+                      [d['weight'] for _, _, d in self.graph.out_edges(node_id, data=True) if 'weight' in d]
+        avg_weight = sum(all_weights) / len(all_weights) if all_weights else 0.5
+
+        new_ids = [self._get_next_node_id(), self._get_next_node_id()]
+        for i, new_id in enumerate(new_ids):
+            new_data = MemeNodeData(
+                node_id=new_id,
+                current_meme=mutated_memes[i],
+                group=original_data.group,
+                parents=[node_id]
+            )
+            self.graph.add_node(new_id, data=new_data)
+
+        ratio = self.config.get('dynamic_graph', {}).get('division', {}).get('connection_subset_ratio', 0.6)
+        
+        in_connections = list(self.graph.in_edges(node_id, data=True))
+        out_connections = list(self.graph.out_edges(node_id, data=True))
+        
+        self._assign_split_connections(in_connections, ratio, new_ids, direction='in')
+        self._assign_split_connections(out_connections, ratio, new_ids, direction='out')
+
+        self.graph.add_edge(new_ids[0], new_ids[1], weight=avg_weight)
+        self.graph.add_edge(new_ids[1], new_ids[0], weight=avg_weight)
+
+        self.graph.remove_node(node_id)
+        logger.info(f"Divided node {node_id} into new nodes {new_ids[0]} and {new_ids[1]}.")

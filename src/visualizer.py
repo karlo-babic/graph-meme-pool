@@ -12,38 +12,22 @@ from PIL import Image
 
 from graph_manager import GraphManager
 from data_structures import MemeNodeData
-# Import embedding utils if needed, or receive model/functions
 import embeddings_utils as emb_utils
+from embeddings_utils import EmbeddingManager
 
 logger = logging.getLogger(__name__)
-
-# Set random seed for graph layout consistency
-np.random.seed(2)
 
 class Visualizer:
     """Handles generation of all graph visualizations."""
 
-    def __init__(self, graph_manager: GraphManager, config: Dict, embedding_model: Optional[Any] = None):
+    def __init__(self, graph_manager: GraphManager, config: Dict, embedding_manager: EmbeddingManager):
         self.graph_manager = graph_manager
         self.vis_config = config['visualization']
         self.path_config = config['paths']
-        self.embed_config = config['embeddings']
         self.vis_dir = Path(self.path_config['vis_dir'])
-        self.embedding_model = embedding_model
-        
-        if self.embedding_model is None:
-            if self.vis_config['draw_semantic_diff_per_gen'] or \
-               self.vis_config['draw_final_embs'] or \
-               self.vis_config['plot_semantic_drift'] or \
-               self.vis_config['plot_semantic_centroid_distance_drift']:
-                try:
-                    logger.info("Visualizer loading its own embedding model.")
-                    self.embedding_model = emb_utils.get_sentence_transformer_model(self.embed_config['model_path'])
-                except Exception as e:
-                    logger.error(f"Failed to load embedding model for visualization: {e}. Embedding plots will be skipped.")
-                    self.embedding_model = None
-        else:
-            logger.info("Visualizer received a pre-loaded embedding model.")
+        self.embedding_manager = embedding_manager
+        np.random.seed(config['seed'])  # Set random seed for graph layout consistency
+        logger.info("Visualizer initialized with a shared EmbeddingManager.")
 
 
     def _get_layout(self, G: nx.DiGraph, layout_type='kamada_kawai') -> Dict:
@@ -209,38 +193,28 @@ class Visualizer:
 
     def draw_embs(self):
         """Visualizes graph with layout based on semantic embeddings of current memes."""
-        if not self.embedding_model:
-             logger.warning("Skipping draw_embs: Embedding model not available.")
-             return
-
         G = self.graph_manager.graph
         if G.number_of_nodes() == 0: return
         norm_influences, _ = self._calculate_influence(G)
 
         node_ids_ordered = list(G.nodes())
-        texts = []
-        groups = [] # For coloring
-        node_id_map = {} # Map list index back to node_id
+        texts = [
+            (self.graph_manager.get_node_data(nid).current_meme if self.graph_manager.get_node_data(nid) else "")
+            for nid in node_ids_ordered
+        ]
+        groups = [
+            (self.graph_manager.get_node_data(nid).group if self.graph_manager.get_node_data(nid) and self.graph_manager.get_node_data(nid).group is not None else 0)
+            for nid in node_ids_ordered
+        ]
 
-        for i, node_id in enumerate(node_ids_ordered):
-             data = self.graph_manager.get_node_data(node_id)
-             if data:
-                  texts.append(data.current_meme)
-                  groups.append(data.group if data.group is not None else 0)
-                  node_id_map[i] = node_id
-             else:
-                  texts.append("") # Empty string for missing data
-                  groups.append(0)
-                  node_id_map[i] = node_id
-
-        # Calculate embeddings
-        embeddings_np = emb_utils.calculate_sentence_embeddings(texts, self.embedding_model)
-        if embeddings_np.size == 0:
+        # Calculate embeddings using the manager
+        embeddings_map = self.embedding_manager.get_embeddings(texts)
+        if not embeddings_map:
             logger.error("Failed to calculate embeddings for draw_embs. Skipping plot.")
             return
-
-        # Create dict for reduction
-        embeddings_dict = {node_id_map[i]: emb for i, emb in enumerate(embeddings_np)}
+            
+        embeddings_dict = {nid: embeddings_map.get(texts[i], np.array([])) for i, nid in enumerate(node_ids_ordered)}
+        embeddings_dict = {k: v for k, v in embeddings_dict.items() if v.size > 0} # Filter out failed
 
         # Reduce dimensions
         embeddings_2d = emb_utils.reduce_dimensions_tsne(embeddings_dict, random_state=41)
@@ -248,96 +222,82 @@ class Visualizer:
             logger.error("Failed to reduce embedding dimensions for draw_embs. Skipping plot.")
             return
 
-        # Use reduced embeddings as layout positions
         pos = embeddings_2d
 
         # Colors based on group
         unique_groups = sorted(list(set(groups)))
         num_groups = len(unique_groups)
-        cmap = plt.cm.get_cmap('tab10', num_groups)
         group_to_color_val = {group: i / (num_groups - 1) if num_groups > 1 else 0.5 for i, group in enumerate(unique_groups)}
-        node_color_values = [group_to_color_val[groups[i]] for i in range(len(node_ids_ordered))]
-
+        node_color_values = [group_to_color_val.get(g, 0.5) for g in groups]
 
         node_sizes = [self.vis_config['node_min_size'] + (self.vis_config['node_max_size'] - self.vis_config['node_min_size']) * norm_influences.get(nid, 0.5)
                       for nid in node_ids_ordered]
 
         base_filename = "graph_embeddings_final.png"
-        filepath = self.vis_dir / base_filename # Construct full path here
+        filepath = self.vis_dir / base_filename
         title = "Graph Layout by Semantic Embeddings (Final State)"
-        # Pass the full filepath to _base_draw
         self._base_draw(G, pos, node_color_values, node_sizes, filepath, title)
 
 
     def draw_semantic_difference(self, generation: int):
         """Visualizes semantic shift relative to two reference points."""
-        if not self.embedding_model:
-             logger.warning("Skipping draw_semantic_difference: Embedding model not available.")
-             return
-
         G = self.graph_manager.graph
         if G.number_of_nodes() == 0: return
-        pos = self._get_layout(G) # Use standard layout
+        pos = self._get_layout(G)
         norm_influences, _ = self._calculate_influence(G)
 
-        # Define reference points (Consider making these configurable)
+        # Define two reference texts representing different semantic poles  TODO: Make configurable
         reference_A = "The animal moved because its brain sent a signal to its muscles."
         reference_B = "The animal moved because it was carried by a flood."
-        try:
-             embedding_A = emb_utils.calculate_sentence_embeddings([reference_A], self.embedding_model)[0]
-             embedding_B = emb_utils.calculate_sentence_embeddings([reference_B], self.embedding_model)[0]
-        except Exception as e:
-             logger.error(f"Failed to embed reference texts for semantic difference: {e}. Skipping plot.")
-             return
+        
+        ref_embeddings = self.embedding_manager.get_embeddings([reference_A, reference_B])
+        embedding_A = ref_embeddings.get(reference_A)
+        embedding_B = ref_embeddings.get(reference_B)
 
-        semantic_diff_ratios = []
+        if embedding_A is None or embedding_B is None or embedding_A.size == 0 or embedding_B.size == 0:
+            logger.error(f"Failed to embed reference texts for semantic difference. Skipping plot.")
+            return
+
         node_ids_ordered = list(G.nodes())
-
         current_texts = []
-        valid_node_indices = [] # Track indices corresponding to nodes with valid data
+        valid_node_indices = []
         for i, node_id in enumerate(node_ids_ordered):
-             data = self.graph_manager.get_node_data(node_id)
-             # Check if history is long enough for the requested generation
-             if data and len(data.history) > generation:
-                  current_texts.append(data.history[generation])
-                  valid_node_indices.append(i)
-             # else: implicitly skip this node for semantic diff calculation
+            data = self.graph_manager.get_node_data(node_id)
+            if data and len(data.history) > generation:
+                current_texts.append(data.history[generation])
+                valid_node_indices.append(i)
 
         if not current_texts:
-             logger.warning(f"No valid node data found for generation {generation} in semantic difference plot.")
-             # Draw an empty plot or skip? Skipping for now.
-             return
+            return
 
-        # Batch embed current texts
-        current_embeddings = emb_utils.calculate_sentence_embeddings(current_texts, self.embedding_model)
-        if current_embeddings.size == 0:
-             logger.error(f"Failed to calculate embeddings for generation {generation} in semantic difference plot.")
-             return
+        embeddings_map = self.embedding_manager.get_embeddings(current_texts)
+        if not embeddings_map:
+            logger.error(f"Failed to calculate embeddings for generation {generation} in semantic difference plot.")
+            return
 
-        # Calculate similarity and ratio for valid nodes
-        diff_values_map = {} # node_id -> ratio
-        for i, emb_current in enumerate(current_embeddings):
-             sim_A = emb_utils.calculate_cosine_similarity(emb_current, embedding_A)
-             sim_B = emb_utils.calculate_cosine_similarity(emb_current, embedding_B)
-             # Ratio: 0 means close to A, 1 means close to B
-             ratio = sim_B / (sim_A + sim_B) if (sim_A + sim_B) > 1e-6 else 0.5 # Avoid division by zero
-             original_node_index = valid_node_indices[i]
-             node_id = node_ids_ordered[original_node_index]
-             diff_values_map[node_id] = ratio
+        diff_values_map = {}
+        for i, text in enumerate(current_texts):
+            emb_current = embeddings_map.get(text)
+            if emb_current is None or emb_current.size == 0:
+                continue
 
-        # Prepare color values for all nodes, using 0.5 for skipped nodes
+            sim_A = emb_utils.calculate_cosine_similarity(emb_current, embedding_A)
+            sim_B = emb_utils.calculate_cosine_similarity(emb_current, embedding_B)
+            ratio = sim_B / (sim_A + sim_B) if (sim_A + sim_B) > 1e-6 else 0.5
+            original_node_index = valid_node_indices[i]
+            node_id = node_ids_ordered[original_node_index]
+            diff_values_map[node_id] = ratio
+
         color_values = [diff_values_map.get(node_id, 0.5) for node_id in node_ids_ordered]
 
         node_sizes = [self.vis_config['node_min_size'] + (self.vis_config['node_max_size'] - self.vis_config['node_min_size']) * norm_influences.get(nid, 0.5)
                       for nid in node_ids_ordered]
 
-        # Save to subdirectory
         sem_diff_dir = self.vis_dir / "graph_semantic_difference"
         sem_diff_dir.mkdir(exist_ok=True)
-        filename = sem_diff_dir / f"gen_{generation:04d}.png" # Use padding for sorting
+        filename = sem_diff_dir / f"gen_{generation:04d}.png"
         title = f"Semantic Difference (Gen {generation}, Blue=RefA, Red=RefB)"
 
-        # Use _base_draw but provide full path
         self._base_draw(G, pos, color_values, node_sizes, filename, title)
 
 
@@ -699,46 +659,47 @@ class Visualizer:
             min_alpha (float): Minimum marker alpha (opacity) for centroids.
             max_alpha (float): Maximum marker alpha (opacity) for centroids.
         """
-        if not self.embedding_model:
-            logger.warning("Skipping draw_semantic_drift: Embedding model not available.")
-            return
-
         G = self.graph_manager.graph
         if G.number_of_nodes() == 0:
             logger.warning("Skipping draw_semantic_drift: Graph has no nodes.")
             return
 
-        # 1. Collect Data, Calculate & Store Embeddings ONCE
+        all_historical_texts = set()
+        for node_id in G.nodes():
+            data = self.graph_manager.get_node_data(node_id)
+            if hasattr(data, 'history') and data.history:
+                for t, meme in enumerate(data.history):
+                    if num_generations >= 0 and t >= num_generations: break
+                    all_historical_texts.add(str(meme))
+        
+        if not all_historical_texts:
+             logger.warning("Skipping draw_semantic_drift: No meme history found.")
+             return
+
+        logger.info("Pre-computing all historical embeddings for drift plot...")
+        embeddings_map = self.embedding_manager.get_embeddings(list(all_historical_texts))
+        
         node_group_map = {}
         group_timestep_embeddings = defaultdict(lambda: defaultdict(list))
-        individual_points_metadata = [] # {'group': g, 'timestep': t, 'id': idx}
+        individual_points_metadata = []
         all_individual_embeddings_collected = []
         max_timestep_overall = 0
         embedding_idx_counter = 0
 
-        logger.info("Calculating and collecting embeddings...")
         for node_id in G.nodes():
             data = self.graph_manager.get_node_data(node_id)
             if hasattr(data, 'history') and data.history:
                 group = getattr(data, 'group', 0)
                 node_group_map[node_id] = group
-                current_max_t = -1
-                node_texts, node_timesteps = [], []
                 for t, meme in enumerate(data.history):
                     if num_generations >= 0 and t >= num_generations: break
-                    node_texts.append(str(meme))
-                    node_timesteps.append(t)
-                    current_max_t = t
-                if node_texts:
-                    node_embeddings = emb_utils.calculate_sentence_embeddings(node_texts, self.embedding_model)
-                    if node_embeddings is not None and node_embeddings.size > 0:
-                        for i, embedding in enumerate(node_embeddings):
-                            timestep = node_timesteps[i]
-                            group_timestep_embeddings[group][timestep].append(embedding)
-                            individual_points_metadata.append({'group': group, 'timestep': timestep, 'id': embedding_idx_counter})
-                            all_individual_embeddings_collected.append(embedding)
-                            embedding_idx_counter += 1
-                if current_max_t > max_timestep_overall: max_timestep_overall = current_max_t
+                    embedding = embeddings_map.get(str(meme))
+                    if embedding is not None and embedding.size > 0:
+                        group_timestep_embeddings[group][t].append(embedding)
+                        individual_points_metadata.append({'group': group, 'timestep': t, 'id': embedding_idx_counter})
+                        all_individual_embeddings_collected.append(embedding)
+                        embedding_idx_counter += 1
+                        max_timestep_overall = max(max_timestep_overall, t)
 
         if not all_individual_embeddings_collected:
              logger.warning("Skipping draw_semantic_drift: No embeddings generated.")
@@ -1006,43 +967,41 @@ class Visualizer:
             visible_groups (Optional[List[Any]]): Groups to display. Defaults to None (all).
             relative_group_id (Optional[Any]): If set, calculate distance relative to this group. Defaults to None.
         """
-        if not hasattr(self, 'embedding_model') or not self.embedding_model:
-            logger.warning("Skipping plot_semantic_centroid_distance_drift: Embedding model not available.")
-            return
-        global emb_utils
-        if 'emb_utils' not in globals():
-             logger.error("emb_utils not found. Cannot calculate embeddings.")
-             return
-
         G = self.graph_manager.graph
         if G.number_of_nodes() == 0:
             logger.warning("Skipping plot_semantic_centroid_distance_drift: Graph has no nodes.")
             return
 
+        all_historical_texts = set()
+        for node_id in G.nodes():
+            data = self.graph_manager.get_node_data(node_id)
+            if hasattr(data, 'history') and data.history:
+                for t, meme in enumerate(data.history):
+                    if num_generations >= 0 and t >= num_generations: break
+                    all_historical_texts.add(str(meme))
+
+        if not all_historical_texts:
+            logger.warning("Skipping plot_semantic_centroid_distance_drift: No embeddings collected.")
+            return
+        
+        logger.info("Pre-computing all historical embeddings for distance drift plot...")
+        embeddings_map = self.embedding_manager.get_embeddings(list(all_historical_texts))
+
         node_group_map = {}
         group_timestep_embeddings = defaultdict(lambda: defaultdict(list))
         max_timestep_overall = 0
 
-        logger.info("Calculating and collecting embeddings for distance drift...")
         for node_id in G.nodes():
             data = self.graph_manager.get_node_data(node_id)
             if hasattr(data, 'history') and data.history:
                 group = getattr(data, 'group', 0)
                 node_group_map[node_id] = group
-                current_max_t = -1
-                node_texts, node_timesteps = [], []
                 for t, meme in enumerate(data.history):
                     if num_generations >= 0 and t >= num_generations: break
-                    node_texts.append(str(meme))
-                    node_timesteps.append(t)
-                    current_max_t = t
-                if node_texts:
-                    node_embeddings = emb_utils.calculate_sentence_embeddings(node_texts, self.embedding_model)
-                    if node_embeddings is not None and node_embeddings.size > 0:
-                        for i, embedding in enumerate(node_embeddings):
-                            timestep = node_timesteps[i]
-                            group_timestep_embeddings[group][timestep].append(embedding)
-                if current_max_t > max_timestep_overall: max_timestep_overall = current_max_t
+                    embedding = embeddings_map.get(str(meme))
+                    if embedding is not None and embedding.size > 0:
+                        group_timestep_embeddings[group][t].append(embedding)
+                        max_timestep_overall = max(max_timestep_overall, t)
 
         if not group_timestep_embeddings:
             logger.warning("Skipping plot_semantic_centroid_distance_drift: No embeddings collected.")
@@ -1273,31 +1232,21 @@ class Visualizer:
             num_generations (int): Max history steps (generations) to include.
                                    Defaults to -1 (all available generations).
         """
-        if not hasattr(self, 'embedding_model') or not self.embedding_model:
-            logger.warning("Skipping generate_centroid_closest_meme_table: Embedding model not available.")
-            return
-        global emb_utils
-        if 'emb_utils' not in globals():
-             logger.error("emb_utils not found. Cannot calculate embeddings.")
-             return
-
         G = self.graph_manager.graph
         if G.number_of_nodes() == 0:
             logger.warning("Skipping generate_centroid_closest_meme_table: Graph has no nodes.")
             return
 
-        # 1. Collect meme texts grouped by (group, timestep)
         group_timestep_memes = defaultdict(lambda: defaultdict(list))
         max_timestep_overall = 0
         logger.info("Collecting memes per group and timestep...")
         for node_id in G.nodes():
             data = self.graph_manager.get_node_data(node_id)
             if hasattr(data, 'history') and data.history:
-                group = getattr(data, 'group', 0) # Default group 0 if not specified
+                group = getattr(data, 'group', 0)
                 for t, meme in enumerate(data.history):
                     if num_generations >= 0 and t >= num_generations:
                         break
-                    # Store the meme text directly
                     group_timestep_memes[group][t].append(str(meme))
                     max_timestep_overall = max(max_timestep_overall, t)
 
@@ -1305,40 +1254,37 @@ class Visualizer:
             logger.warning("Skipping generate_centroid_closest_meme_table: No historical meme data found.")
             return
 
-        # 2. Calculate centroids and find closest meme for each (group, timestep)
-        centroid_closest_memes = defaultdict(dict) # {group: {timestep: closest_meme_text}}
+        centroid_closest_memes = defaultdict(dict)
         logger.info("Calculating centroids and finding closest memes...")
         for group, timesteps_data in group_timestep_memes.items():
             for timestep, meme_texts in timesteps_data.items():
-                if not meme_texts:
-                    continue # Skip if no memes for this group/timestep
+                if not meme_texts: continue
 
-                # Calculate embeddings for all memes in this cell
-                embeddings = emb_utils.calculate_sentence_embeddings(meme_texts, self.embedding_model)
+                embeddings_map = self.embedding_manager.get_embeddings(meme_texts)
+                
+                valid_embeddings = [embeddings_map[text] for text in meme_texts if text in embeddings_map and embeddings_map[text].size > 0]
+                valid_texts = [text for text in meme_texts if text in embeddings_map and embeddings_map[text].size > 0]
 
-                if embeddings is None or embeddings.size == 0:
+                if not valid_embeddings:
                     logger.warning(f"Could not calculate embeddings for Group {group}, Timestep {timestep}.")
                     continue
+                
+                embeddings_array = np.array(valid_embeddings)
+                centroid = np.mean(embeddings_array, axis=0)
 
-                # Calculate the centroid
-                centroid = np.mean(embeddings, axis=0)
-
-                # Find the embedding (and corresponding text) closest to the centroid
-                if embeddings.shape[0] == 1:
-                    # If only one meme, it's trivially the closest
+                if embeddings_array.shape[0] == 1:
                     closest_idx = 0
                 else:
-                    distances = np.linalg.norm(embeddings - centroid, axis=1)
+                    distances = np.linalg.norm(embeddings_array - centroid, axis=1)
                     closest_idx = np.argmin(distances)
 
-                closest_meme_text = meme_texts[closest_idx]
-                centroid_closest_memes[group][timestep] = closest_meme_text
+                centroid_closest_memes[group][timestep] = valid_texts[closest_idx]
 
         if not centroid_closest_memes:
             logger.warning("Skipping generate_centroid_closest_meme_table: No closest memes could be determined (check embeddings).")
             return
 
-        # 3. Prepare data for CSV output
+        # Prepare data for CSV output
         all_groups = sorted(list(centroid_closest_memes.keys()))
         if not all_groups:
              logger.warning("Skipping generate_centroid_closest_meme_table: No groups with data found.")
@@ -1356,7 +1302,7 @@ class Visualizer:
                 row.append(cell_value)
             table_data.append(row)
 
-        # 4. Write to CSV
+        # Write to CSV
         output_file = self.vis_dir / "centroid_closest_memes_table.csv"
         try:
             logger.info(f"Writing centroid closest meme table to {output_file}")

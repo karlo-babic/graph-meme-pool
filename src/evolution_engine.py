@@ -487,8 +487,11 @@ class EvolutionEngine:
         for current_gen_index in range(start_generation_index, end_generation_index):
             try:
                 self.step(current_gen_index)
-                last_completed_generation_index = current_gen_index
+                
+                # Dynamic graph update phase
+                self.graph_manager.update_graph_topology(current_gen_index)
 
+                last_completed_generation_index = current_gen_index
                 # Yield the index of the completed generation for external processing (like visualization)
                 yield last_completed_generation_index
 

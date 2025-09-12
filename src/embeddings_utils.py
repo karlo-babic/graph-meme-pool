@@ -15,6 +15,48 @@ logger = logging.getLogger(__name__)
 
 _sentence_model_cache: Dict[str, SentenceTransformer] = {}
 
+class EmbeddingManager:
+    """Manages the loading, caching, and retrieval of text embeddings."""
+    def __init__(self, model_name: str):
+        self._embedding_cache: Dict[str, np.ndarray] = {}
+        self.model = get_sentence_transformer_model(model_name)
+        logger.info(f"EmbeddingManager initialized with model '{model_name}'.")
+
+    def get_embeddings(self, texts: List[str]) -> Dict[str, np.ndarray]:
+        """
+        Retrieves embeddings for a list of texts, computing and caching any that are missing.
+        """
+        if not texts:
+            return {}
+
+        unique_texts = list(set(texts))
+        texts_to_compute = [text for text in unique_texts if text not in self._embedding_cache]
+
+        if texts_to_compute:
+            logger.debug(f"Computing embeddings for {len(texts_to_compute)} new unique texts.")
+            try:
+                new_embeddings = self.model.encode(texts_to_compute, show_progress_bar=False)
+                for text, embedding in zip(texts_to_compute, new_embeddings):
+                    self._embedding_cache[text] = embedding
+            except Exception as e:
+                logger.error(f"Error computing embeddings: {e}")
+                # Return empty embeddings for failed texts to avoid crashing
+                for text in texts_to_compute:
+                    self._embedding_cache[text] = np.array([])
+
+        # Return a dictionary mapping each requested text to its cached embedding
+        return {text: self._embedding_cache.get(text) for text in unique_texts}
+
+    def get_similarity(self, text1: str, text2: str) -> float:
+        """Calculates cosine similarity between two texts using cached embeddings."""
+        embeddings = self.get_embeddings([text1, text2])
+        emb1 = embeddings.get(text1)
+        emb2 = embeddings.get(text2)
+
+        if emb1 is not None and emb2 is not None and emb1.size > 0 and emb2.size > 0:
+            return calculate_cosine_similarity(emb1, emb2)
+        return 0.0  #TODO: Decide on behavior for missing embeddings
+
 def get_sentence_transformer_model(model_name: str) -> SentenceTransformer:
     """Loads or retrieves a cached SentenceTransformer model."""
     if model_name not in _sentence_model_cache:

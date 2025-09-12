@@ -11,6 +11,8 @@ class MemeNodeData:
     current_meme_score: Optional[float] = None
     received_memes: List[Tuple[str, float]] = field(default_factory=list) # List of (meme_text, influence_weight)
     group: Optional[int] = None # Group identifier, if applicable
+    parents: List[Any] = field(default_factory=list) # For lineage tracking
+    creation_generation: int = 0 # Track when the node was created
 
     def __post_init__(self):
         # Ensure initial meme is in history if history is empty
