@@ -1,13 +1,13 @@
 import random
 import logging
 from typing import Dict, List, Optional, Tuple, Set, Any
-import numpy as np # For checking NaN
+import numpy as np
 import re
 
 from graph_manager import GraphManager
 from llm_service import LLMServiceInterface
 from fitness_model import FitnessModel
-from embeddings_utils import calculate_sentence_embeddings, calculate_cosine_similarity, get_sentence_transformer_model
+from embeddings_utils import EmbeddingManager
 
 logger = logging.getLogger(__name__)
 
@@ -19,11 +19,11 @@ class EvolutionEngine:
                  llm_service: LLMServiceInterface,
                  config: Dict,
                  fitness_model: Optional[FitnessModel] = None,
-                 embedding_model: Optional[Any] = None):
+                 embedding_manager: Optional[EmbeddingManager] = None):
         self.graph_manager = graph_manager
         self.llm_service = llm_service
         self.fitness_model = fitness_model
-        self.embedding_model = embedding_model
+        self.embedding_manager = embedding_manager
         self.config = config['simulation']
         self.llm_config = config['llm']
         self.fitness_model_huggingpath = self.config['fitness_model_huggingpath'].lower()
@@ -31,9 +31,9 @@ class EvolutionEngine:
         random.seed(config['seed'])
 
         # Validation
-        if self.selection_strategy == 'fitness_similarity_product' and not self.embedding_model:
-            logger.critical("EvolutionEngine initialized for 'fitness_similarity_product' strategy, but no embedding model was provided. This will fail.")
-            raise ValueError("Embedding model instance is required for 'fitness_similarity_product' strategy.")
+        if self.selection_strategy == 'fitness_similarity_product' and not self.embedding_manager:
+            logger.critical("EvolutionEngine initialized for 'fitness_similarity_product' strategy, but no embedding manager was provided. This will fail.")
+            raise ValueError("EmbeddingManager instance is required for 'fitness_similarity_product' strategy.")
         logger.info(f"Using selection strategy: '{self.selection_strategy}'")
 
         if self.fitness_model_huggingpath and not self.fitness_model:
@@ -211,7 +211,6 @@ class EvolutionEngine:
 
         all_memes_in_play: Set[str] = set()
         meme_score_cache: Dict[str, Optional[float]] = {}
-        meme_embedding_cache: Dict[str, np.ndarray] = {}
 
         # Collect memes and populate initial score cache
         for node_id, data in nodes_data.items():
@@ -233,12 +232,10 @@ class EvolutionEngine:
             new_scores = self._score_memes(memes_needing_score)
             meme_score_cache.update({meme: score for meme, score in zip(memes_needing_score, new_scores) if score is not None})
 
-        # Calculate and cache any missing embeddings (needed for merge logic and optionally for selection)
-        memes_needing_embedding = list(all_memes_in_play - set(meme_embedding_cache.keys()))
-        if memes_needing_embedding:
-            logger.info(f"Generation {generation}: Calculating embeddings for {len(memes_needing_embedding)} unique memes.")
-            new_embeddings = calculate_sentence_embeddings(memes_needing_embedding, self.embedding_model)
-            meme_embedding_cache.update({meme: emb for meme, emb in zip(memes_needing_embedding, new_embeddings)})
+        # Ensure all necessary embeddings are cached for this generation
+        if all_memes_in_play and self.embedding_manager:
+            logger.info(f"Generation {generation}: Ensuring embeddings are cached for {len(all_memes_in_play)} unique memes in play.")
+            self.embedding_manager.get_embeddings(list(all_memes_in_play))
 
         # Decide actions for each node
         updates_pending: Dict[Any, Dict[str, Any]] = {}
@@ -254,22 +251,19 @@ class EvolutionEngine:
 
             # Select best candidate meme
             best_sender_id, best_received_meme, best_received_score = None, None, -1.0
-            if self.selection_strategy == 'fitness_similarity_product':
-                current_meme_embedding = meme_embedding_cache.get(current_meme)
-                if current_meme_embedding is not None:
-                    best_combined_score = -1.0
-                    for sender_id, meme, _ in data.received_memes:
-                        received_fitness = meme_score_cache.get(meme)
-                        received_embedding = meme_embedding_cache.get(meme)
-                        if received_fitness is not None and received_embedding is not None:
-                            similarity = (calculate_cosine_similarity(current_meme_embedding, received_embedding) + 1) / 2
-                            combined_score = received_fitness * similarity
-                            if combined_score > best_combined_score:
-                                best_combined_score = combined_score
-                                best_received_meme = meme
-                                best_sender_id = sender_id
-                    if best_received_meme:
-                        best_received_score = meme_score_cache.get(best_received_meme, -1.0)
+            if self.selection_strategy == 'fitness_similarity_product' and self.embedding_manager:
+                best_combined_score = -1.0
+                for sender_id, meme, _ in data.received_memes:
+                    received_fitness = meme_score_cache.get(meme)
+                    if received_fitness is not None:
+                        similarity = (self.embedding_manager.get_similarity(current_meme, meme) + 1) / 2
+                        combined_score = received_fitness * similarity
+                        if combined_score > best_combined_score:
+                            best_combined_score = combined_score
+                            best_received_meme = meme
+                            best_sender_id = sender_id
+                if best_received_meme:
+                    best_received_score = meme_score_cache.get(best_received_meme, -1.0)
             elif self.selection_strategy == 'fitness':
                 for sender_id, meme, _ in data.received_memes:
                     score = meme_score_cache.get(meme)
@@ -283,22 +277,14 @@ class EvolutionEngine:
 
             # --- MERGE DECISION LOGIC ---
             action_type = "keep"
-            #if 1 - threshold <= score_ratio <= 1 + threshold:
-            if 1 - threshold <= score_ratio:
-                current_embedding = meme_embedding_cache.get(current_meme)
-                received_embedding = meme_embedding_cache.get(best_received_meme)
-                if current_embedding is not None and received_embedding is not None:
-                    similarity = (calculate_cosine_similarity(current_embedding, received_embedding) + 1) / 2
-                    #print(f"similarity: {similarity:.2f}\nCurrent meme: {current_meme}\nBest received meme: {best_received_meme}\n")
-                    if similarity >= converge_thresh:
-                        action_type = "merge_converge"
-                        merge_converge_candidates.append((current_meme, best_received_meme))
-                    elif similarity >= influence_thresh:
-                        action_type = "merge_influence"
-                        merge_influence_candidates.append((current_meme, best_received_meme))
-            #elif score_ratio > 1 + threshold:
-            #    action_type = "mutate"
-            #    mutation_candidates.append(best_received_meme)
+            if 1 - threshold <= score_ratio and self.embedding_manager:
+                similarity = (self.embedding_manager.get_similarity(current_meme, best_received_meme) + 1) / 2
+                if similarity >= converge_thresh:
+                    action_type = "merge_converge"
+                    merge_converge_candidates.append((current_meme, best_received_meme))
+                elif similarity >= influence_thresh:
+                    action_type = "merge_influence"
+                    merge_influence_candidates.append((current_meme, best_received_meme))
 
             if action_type != "keep":
                 self.graph_manager.record_propagation(generation, best_sender_id, node_id, best_received_meme)
@@ -307,7 +293,7 @@ class EvolutionEngine:
                     "current_meme": current_meme,
                     "received_meme": best_received_meme
                 }
-
+                
         # Perform LLM mutations and merges
         mutated_memes_map: Dict[str, str] = {}
         merged_memes_map: Dict[Tuple[str, str], str] = {}
