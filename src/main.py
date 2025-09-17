@@ -131,7 +131,7 @@ if __name__ == "__main__":
             llm_service=llm_service,
             config=config,
             fitness_model=fitness_model_instance,
-            embedding_model=embedding_manager.model # Pass the raw model if needed by old functions  TODO
+            embedding_model=embedding_manager.model # Pass the raw model if needed by old functions  TODO: is this needed?
         )
 
         logger.info("Initializing Visualizer...")

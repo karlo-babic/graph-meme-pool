@@ -55,7 +55,7 @@ class EmbeddingManager:
 
         if emb1 is not None and emb2 is not None and emb1.size > 0 and emb2.size > 0:
             return calculate_cosine_similarity(emb1, emb2)
-        return 0.0  #TODO: Decide on behavior for missing embeddings
+        return -1
 
 def get_sentence_transformer_model(model_name: str) -> SentenceTransformer:
     """Loads or retrieves a cached SentenceTransformer model."""

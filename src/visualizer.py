@@ -109,6 +109,7 @@ class Visualizer:
                  node_labels[node_id] = str(node_id) # Fallback to ID
 
         nx.draw_networkx_labels(G, pos, labels=node_labels, font_size=7)
+        #nx.draw_networkx_labels(G, pos, font_size=7)
 
         if title:
             plt.title(title, fontsize=16)
