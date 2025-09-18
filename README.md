@@ -107,6 +107,7 @@ The YAML configuration file is central to controlling the simulation. Main secti
 If you use this code or framework in your research, please cite the original paper which introduced the foundational concepts:
 
 ```bibtex
+Not yet published
 @inproceedings{babic2025selection,
   author    = {Babi\'{c}, Karlo},
   title     = {Selection in the Meme Pool: Graph-Based Evolution of Textual Content},
@@ -116,9 +117,3 @@ If you use this code or framework in your research, please cite the original pap
   note      = {Accepted for publication}
 }
 ```
-
-## Semantic Space Evolution Animation
-
-The following animation visualizes meme evolution in a 2D semantic space (BERT embeddings projected with t-SNE) over 300 generations. Larger circles are group centroids connected chronologically, tracking each group's semantic trajectory.
-
-![Animated visualization of meme evolution in semantic space](https://github.com/karlo-babic/graph-meme-pool/blob/main/semantic_space_evolution.gif?raw=true)
