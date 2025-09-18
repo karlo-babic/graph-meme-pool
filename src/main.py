@@ -16,10 +16,12 @@ import embeddings_utils as emb_utils
 from graph.graph_manager import GraphManager
 from graph.graph_persistence import GraphPersistence
 from graph.graph_initializer import SmallWorldsInitializer, ExampleGraphInitializer
-from graph.graph_dynamics import NullDynamicsStrategy, FusionDivisionStrategy
+from graph.graph_dynamics import (
+    GraphDynamicsStrategy, NullDynamicsStrategy, CompositeDynamicsStrategy,
+    NodeFusionAction, NodeDivisionAction
+)
 
 def set_global_seed(seed: int):
-    """Sets the seed for all relevant random number generators."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
@@ -51,6 +53,32 @@ def setup_logging(config):
     logger.info("Logging setup complete.")
     return logger
 
+def build_dynamics_strategy(config: dict, embedding_manager: emb_utils.EmbeddingManager, llm_service: LLMService) -> GraphDynamicsStrategy:
+    """Factory function to build the graph dynamics strategy from config."""
+    dyn_config = config.get('dynamic_graph', {})
+    if not dyn_config.get('enabled', False):
+        return NullDynamicsStrategy()
+
+    action_configs = dyn_config.get('actions', [])
+    if not action_configs:
+        return NullDynamicsStrategy()
+
+    action_objects = []
+    for action_conf in action_configs:
+        action_type = action_conf.get('type')
+        if not action_conf.get('enabled', False):
+            continue
+
+        if action_type == 'fusion':
+            action_objects.append(NodeFusionAction(action_conf, embedding_manager))
+        elif action_type == 'division':
+            action_objects.append(NodeDivisionAction(action_conf, llm_service))
+        else:
+            logger.warning(f"Unknown dynamic graph action type '{action_type}' in config. Skipping.")
+    
+    return CompositeDynamicsStrategy(action_objects, config)
+
+
 if __name__ == "__main__":
     start_time = time.time()
     config = load_config("config.yaml")
@@ -76,12 +104,7 @@ if __name__ == "__main__":
             logger.info("No existing graph found or load failed. Creating a new graph.")
             start_generation_index = 0
             gen_type = config['graph_generation']['type']
-            if gen_type == 'small_worlds':
-                initializer = SmallWorldsInitializer(config)
-            elif gen_type == 'example':
-                initializer = ExampleGraphInitializer(config)
-            else:
-                raise ValueError(f"Unknown graph generation type: {gen_type}")
+            initializer = ExampleGraphInitializer(config) if gen_type == 'example' else SmallWorldsInitializer(config)
             initial_memes = initializer._load_initial_memes()
             graph_obj = initializer.create(initial_memes)
 
@@ -90,16 +113,8 @@ if __name__ == "__main__":
         prop_history = graph_persistence.load_propagation_history(history_filepath)
         graph_manager.set_propagation_history(prop_history)
         
-        dyn_config = config.get('dynamic_graph', {})
-        if dyn_config.get('enabled', False):
-            strategy_name = dyn_config.get('strategy')
-            if strategy_name == 'fusion_division':
-                strategy = FusionDivisionStrategy(config, embedding_manager, llm_service)
-                graph_manager.set_dynamics_strategy(strategy)
-            elif strategy_name == 'null':
-                graph_manager.set_dynamics_strategy(NullDynamicsStrategy())
-            else:
-                logger.warning(f"Unknown dynamics strategy '{strategy_name}'. Defaulting to Null (static graph).")
+        dynamics_strategy = build_dynamics_strategy(config, embedding_manager, llm_service)
+        graph_manager.set_dynamics_strategy(dynamics_strategy)
 
         fitness_model_instance = None
         if config['simulation']['fitness_model_huggingpath']:

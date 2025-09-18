@@ -18,20 +18,23 @@ graph_generation:
 
 dynamic_graph:
   enabled: true
-  strategy: 'fusion_division' # 'null' for static graph, 'fusion_division' for dynamic
-  initial_static_generations: 20 # No dynamic changes for the first n generations
-  check_every_n_generations: 1
-  fusion:
-    enabled: true
-    similarity_threshold: 0.90 # Min similarity for fusion
-  division:
-    enabled: true
-    max_graph_nodes: 300
-    # To consider division, a node must have at least this many in/out connections
-    min_in_degree: 2
-    min_out_degree: 2
-    fitness_top_percent: 0.12 # Top % fittest nodes are candidates
-    connection_subset_ratio: 0.5
+  initial_static_generations: 0
+  actions:
+    - type: 'fusion'
+      enabled: true
+      check_every_n_generations: 1
+      params:
+        similarity_threshold: 0.90 # Min similarity for fusion
+    - type: 'division'
+      enabled: true
+      check_every_n_generations: 1
+      params:
+        max_graph_nodes: 300
+        # To consider division, a node must have at least this many in/out connections
+        min_in_degree: 2
+        min_out_degree: 2
+        fitness_top_percent: 0.12 # Top % fittest nodes are candidates
+        connection_subset_ratio: 0.5
 
 simulation:
   generations: 500
