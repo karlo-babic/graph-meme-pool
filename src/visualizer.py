@@ -20,13 +20,12 @@ logger = logging.getLogger(__name__)
 class Visualizer:
     """Handles generation of all graph visualizations."""
 
-    def __init__(self, graph_manager: GraphManager, config: Dict, embedding_manager: EmbeddingManager):
+    def __init__(self, graph_manager: GraphManager, config: Dict, embedding_manager: EmbeddingManager, vis_dir: Path):
         self.graph_manager = graph_manager
         self.vis_config = config['visualization']
-        self.path_config = config['paths']
-        self.vis_dir = Path(self.path_config['vis_dir'])
+        self.vis_dir = vis_dir
         self.embedding_manager = embedding_manager
-        np.random.seed(config['seed'])  # Set random seed for graph layout consistency
+        np.random.seed(config['seed'])
         logger.info("Visualizer initialized with a shared EmbeddingManager.")
 
 
@@ -295,7 +294,6 @@ class Visualizer:
                       for nid in node_ids_ordered]
 
         sem_diff_dir = self.vis_dir / "graph_semantic_difference"
-        sem_diff_dir.mkdir(exist_ok=True)
         filename = sem_diff_dir / f"gen_{generation:04d}.png"
         title = f"Semantic Difference (Gen {generation}, Blue=RefA, Red=RefB)"
 
@@ -921,7 +919,6 @@ class Visualizer:
                 fig.tight_layout() # Adjust layout
 
                 sem_drift_dir = self.vis_dir / "semantic_drift"
-                sem_drift_dir.mkdir(exist_ok=True)
                 gen_output_file = sem_drift_dir / f"{output_file_base.stem}_{t:04d}.png"
                 #gen_output_file = self.vis_dir / f"{output_file_base.stem}.png"
                 try:

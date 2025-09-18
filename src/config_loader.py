@@ -63,9 +63,9 @@ def _recursive_update(d, u):
             d[k] = v
     return d
 
-def load_config(config_path="config.yaml"):
+def load_config(config_path="configs/base_config.yaml"):
     """Loads configuration from YAML file, applying defaults for missing keys."""
-    config = DEFAULT_CONFIG.copy() # Start with defaults
+    config = DEFAULT_CONFIG.copy()
     try:
         with open(config_path, 'r') as f:
             yaml_config = yaml.safe_load(f)
@@ -75,10 +75,4 @@ def load_config(config_path="config.yaml"):
         print(f"Warning: Config file '{config_path}' not found. Using default configuration.")
     except Exception as e:
         print(f"Error loading config file '{config_path}': {e}. Using default configuration.")
-
-    # Ensure directories exist
-    Path(config['paths']['graph_save_dir']).mkdir(parents=True, exist_ok=True)
-    Path(config['paths']['vis_dir']).mkdir(parents=True, exist_ok=True)
-    Path(config['paths']['vis_dir'], "graph_semantic_difference").mkdir(parents=True, exist_ok=True)
-
     return config

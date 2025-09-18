@@ -5,6 +5,8 @@ import time
 import random
 import numpy as np
 import torch
+import argparse
+import shutil
 
 from config_loader import load_config
 from llm_service import LLMService
@@ -31,15 +33,12 @@ def set_global_seed(seed: int):
         torch.backends.cudnn.benchmark = False
     logging.info(f"Global seed set to {seed}")
 
-def setup_logging(config):
+def setup_logging(log_file: Path, config: dict, is_resuming: bool):
     log_level_str = config['logging']['level'].upper()
     log_level = getattr(logging, log_level_str, logging.INFO)
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    log_file = config['paths']['log_file']
-    handlers = [logging.StreamHandler(sys.stdout)]
-    if log_file:
-        Path(log_file).parent.mkdir(parents=True, exist_ok=True)
-        handlers.append(logging.FileHandler(log_file, mode='w'))
+    file_mode = 'a' if is_resuming else 'w'
+    handlers = [logging.StreamHandler(sys.stdout), logging.FileHandler(log_file, mode=file_mode)]
     
     root_logger = logging.getLogger()
     for handler in root_logger.handlers[:]: root_logger.removeHandler(handler)
@@ -54,54 +53,91 @@ def setup_logging(config):
     return logger
 
 def build_dynamics_strategy(config: dict, embedding_manager: emb_utils.EmbeddingManager, llm_service: LLMService) -> GraphDynamicsStrategy:
-    """Factory function to build the graph dynamics strategy from config."""
     dyn_config = config.get('dynamic_graph', {})
-    if not dyn_config.get('enabled', False):
-        return NullDynamicsStrategy()
-
-    action_configs = dyn_config.get('actions', [])
-    if not action_configs:
+    if not dyn_config.get('enabled', False) or not dyn_config.get('actions'):
         return NullDynamicsStrategy()
 
     action_objects = []
-    for action_conf in action_configs:
+    for action_conf in dyn_config['actions']:
+        if not action_conf.get('enabled', False): continue
         action_type = action_conf.get('type')
-        if not action_conf.get('enabled', False):
-            continue
-
         if action_type == 'fusion':
             action_objects.append(NodeFusionAction(action_conf, embedding_manager))
         elif action_type == 'division':
             action_objects.append(NodeDivisionAction(action_conf, llm_service))
         else:
-            logger.warning(f"Unknown dynamic graph action type '{action_type}' in config. Skipping.")
+            logging.getLogger(__name__).warning(f"Unknown dynamic action type '{action_type}'. Skipping.")
     
     return CompositeDynamicsStrategy(action_objects, config)
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run the Graph Meme Pool simulation.")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument('--config', type=str, help='Path to a configuration file for a new run.')
+    group.add_argument('--resume', type=str, help='Path to an experiment directory to resume.')
+    args = parser.parse_args()
+
+    # --- Determine Run Mode and Setup Paths/Config ---
+    if args.resume:
+        experiment_dir = Path(args.resume)
+        if not experiment_dir.is_dir():
+            print(f"Error: Resume path '{experiment_dir}' is not a valid directory.")
+            sys.exit(1)
+        
+        config_path = experiment_dir / "config.yaml"
+        if not config_path.exists():
+            print(f"Error: Cannot find 'config.yaml' in resume directory '{experiment_dir}'.")
+            sys.exit(1)
+            
+        is_resuming = True
+        config = load_config(config_path)
+        run_name = config.get('run_name', experiment_dir.name)
+        
+    else: # Start a new run
+        config = load_config(args.config)
+        timestr = time.strftime("%Y%m%d-%H%M%S")
+        run_name = config.get('run_name', 'unnamed_run')
+        experiment_dir = Path("experiments") / f"{timestr}_{run_name}"
+        is_resuming = False
+
+    checkpoints_dir = experiment_dir / "checkpoints"
+    visualizations_dir = experiment_dir / "visualizations"
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    visualizations_dir.mkdir(parents=True, exist_ok=True)
+    
+    # --- Setup Logging and Save Config for New Runs ---
+    log_file_path = experiment_dir / "simulation.log"
+    logger = setup_logging(log_file_path, config, is_resuming)
+    
+    if not is_resuming:
+        shutil.copy(args.config, experiment_dir / "config.yaml")
+
+    logger.info(f"--- Graph Meme Pool Simulation: {run_name} ---")
+    logger.info(f"Run mode: {'Resuming' if is_resuming else 'New Run'}")
+    logger.info(f"Experiment outputs saved to: {experiment_dir.resolve()}")
+
     start_time = time.time()
-    config = load_config("config.yaml")
     set_global_seed(config['seed'])
-    logger = setup_logging(config)
-    logger.info("--- Starting Graph Meme Pool Simulation ---")
 
     try:
-        logger.info("Initializing services (LLM, Embeddings)...")
+        # --- Initialize Services (same for both modes) ---
         embedding_manager = emb_utils.EmbeddingManager(config['embeddings']['model_path'])
         llm_service = LLMService(config)
         llm_service.load()
-
         graph_persistence = GraphPersistence()
-        graph_base_name = config['paths']['graph_basename']
-        save_dir = Path(config['paths']['graph_save_dir'])
-        graph_filepath = save_dir / f"{graph_base_name}.json"
-        
-        graph_obj, start_generation_index = graph_persistence.load_graph(graph_filepath)
-        start_generation_index += 1
+        graph_basename = "graph_state"
+        graph_filepath = checkpoints_dir / f"{graph_basename}_final.json"
+        history_filepath = checkpoints_dir / "propagation_history.json"
 
-        if graph_obj is None:
-            logger.info("No existing graph found or load failed. Creating a new graph.")
+        # --- Load or Create Graph State ---
+        if is_resuming:
+            graph_obj, start_gen_idx = graph_persistence.load_graph(graph_filepath)
+            if graph_obj is None:
+                logger.critical("Failed to load graph state for resume. Aborting.")
+                sys.exit(1)
+            start_generation_index = start_gen_idx + 1
+        else:
             start_generation_index = 0
             gen_type = config['graph_generation']['type']
             initializer = ExampleGraphInitializer(config) if gen_type == 'example' else SmallWorldsInitializer(config)
@@ -109,10 +145,10 @@ if __name__ == "__main__":
             graph_obj = initializer.create(initial_memes)
 
         graph_manager = GraphManager(graph_obj)
-        history_filepath = save_dir / f"{graph_base_name}_propagation.json"
         prop_history = graph_persistence.load_propagation_history(history_filepath)
         graph_manager.set_propagation_history(prop_history)
         
+        # --- Initialize Remaining Components ---
         dynamics_strategy = build_dynamics_strategy(config, embedding_manager, llm_service)
         graph_manager.set_dynamics_strategy(dynamics_strategy)
 
@@ -128,38 +164,34 @@ if __name__ == "__main__":
             config=config,
             fitness_model=fitness_model_instance
         )
-        visualizer = Visualizer(graph_manager, config, embedding_manager)
+        visualizer = Visualizer(graph_manager, config, embedding_manager, visualizations_dir)
 
     except Exception as e:
         logger.critical(f"Failed to initialize components: {e}", exc_info=True)
         sys.exit(1)
 
+    # --- Run Simulation ---
     last_completed_gen_in_run = -1
     try:
         if start_generation_index == 0:
-            logger.info("Performing initial setup for new simulation.")
             evolution_engine.mutate_initial_if_all_same()
-            if config['simulation']['initial_score']:
-                evolution_engine.initialize_scores()
-                if visualizer:
-                    if config['visualization']['draw_score_per_gen']: visualizer.draw_score(generation=0)
-                    if config['visualization']['draw_change_per_gen']: visualizer.draw_change(generation=0, history_lookback=4)
+            if config['simulation']['initial_score']: evolution_engine.initialize_scores()
         
         simulation_generator = evolution_engine.run_simulation(start_generation_index=start_generation_index)
         for completed_generation_index in simulation_generator:
             last_completed_gen_in_run = completed_generation_index
             if visualizer:
                 if config['visualization']['draw_score_per_gen']: visualizer.draw_score(generation=completed_generation_index)
-                if config['visualization']['draw_change_per_gen']: visualizer.draw_change(generation=completed_generation_index, history_lookback=4)
+                if config['visualization']['draw_change_per_gen']: visualizer.draw_change(generation=completed_generation_index)
 
     except Exception as e:
         logger.critical(f"Simulation failed during execution: {e}", exc_info=True)
         if graph_manager:
-            logger.info("Attempting to save graph state after error...")
-            error_path = save_dir / f"{graph_base_name}_error_state.json"
+            error_path = checkpoints_dir / f"{graph_basename}_error_state.json"
             graph_persistence.save_graph(graph_manager.get_graph(), error_path, last_completed_gen_in_run)
         sys.exit(1)
 
+    # --- Final Actions ---
     logger.info("Performing final actions...")
     if graph_manager:
         graph_persistence.save_graph(graph_manager.get_graph(), graph_filepath, last_completed_gen_in_run)
