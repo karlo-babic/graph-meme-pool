@@ -20,7 +20,7 @@ from graph.graph_persistence import GraphPersistence
 from graph.graph_initializer import SmallWorldsInitializer, ExampleGraphInitializer
 from graph.graph_dynamics import (
     GraphDynamicsStrategy, NullDynamicsStrategy, CompositeDynamicsStrategy,
-    NodeFusionAction, NodeDivisionAction
+    NodeFusionAction, NodeDivisionAction, NodeDeathAction
 )
 
 def set_global_seed(seed: int):
@@ -65,6 +65,8 @@ def build_dynamics_strategy(config: dict, embedding_manager: emb_utils.Embedding
             action_objects.append(NodeFusionAction(action_conf, embedding_manager))
         elif action_type == 'division':
             action_objects.append(NodeDivisionAction(action_conf, llm_service))
+        elif action_type == 'death':
+            action_objects.append(NodeDeathAction(action_conf))
         else:
             logging.getLogger(__name__).warning(f"Unknown dynamic action type '{action_type}'. Skipping.")
     
@@ -132,13 +134,13 @@ if __name__ == "__main__":
 
         # --- Load or Create Graph State ---
         if is_resuming:
-            graph_obj, start_gen_idx = graph_persistence.load_graph(graph_filepath)
+            graph_obj, start_gen_idx, dynamics_state = graph_persistence.load_graph(graph_filepath)
             if graph_obj is None:
                 logger.critical("Failed to load graph state for resume. Aborting.")
                 sys.exit(1)
             start_generation_index = start_gen_idx + 1
         else:
-            start_generation_index = 0
+            start_generation_index, dynamics_state = 0, {}
             gen_type = config['graph_generation']['type']
             initializer = ExampleGraphInitializer(config) if gen_type == 'example' else SmallWorldsInitializer(config)
             initial_memes = initializer._load_initial_memes()
@@ -150,6 +152,7 @@ if __name__ == "__main__":
         
         # --- Initialize Remaining Components ---
         dynamics_strategy = build_dynamics_strategy(config, embedding_manager, llm_service)
+        dynamics_strategy.set_state(dynamics_state) # Restore state after building
         graph_manager.set_dynamics_strategy(dynamics_strategy)
 
         fitness_model_instance = None
@@ -188,13 +191,15 @@ if __name__ == "__main__":
         logger.critical(f"Simulation failed during execution: {e}", exc_info=True)
         if graph_manager:
             error_path = checkpoints_dir / f"{graph_basename}_error_state.json"
-            graph_persistence.save_graph(graph_manager.get_graph(), error_path, last_completed_gen_in_run)
+            dynamics_state = graph_manager.dynamics_strategy.get_state()
+            graph_persistence.save_graph(graph_manager.get_graph(), error_path, last_completed_gen_in_run, dynamics_state)
         sys.exit(1)
 
     # --- Final Actions ---
     logger.info("Performing final actions...")
     if graph_manager:
-        graph_persistence.save_graph(graph_manager.get_graph(), graph_filepath, last_completed_gen_in_run)
+        dynamics_state = graph_manager.dynamics_strategy.get_state()
+        graph_persistence.save_graph(graph_manager.get_graph(), graph_filepath, last_completed_gen_in_run, dynamics_state)
         graph_persistence.save_propagation_history(graph_manager.get_propagation_history(), history_filepath)
 
     if visualizer:

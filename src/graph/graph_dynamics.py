@@ -2,6 +2,7 @@ import networkx as nx
 import random
 import logging
 import math
+import numpy as np
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, TYPE_CHECKING
 
@@ -22,6 +23,14 @@ class GraphDynamicsStrategy(ABC):
     def execute(self, graph_manager: 'GraphManager', generation: int):
         pass
 
+    def get_state(self) -> dict:
+        """Returns a serializable dictionary of the strategy's internal state."""
+        return {}
+
+    def set_state(self, state: dict):
+        """Restores the strategy's internal state from a dictionary."""
+        pass
+
 class GraphAction(ABC):
     """Represents a single, atomic rule for graph modification."""
     def __init__(self, config: Dict):
@@ -29,6 +38,12 @@ class GraphAction(ABC):
 
     @abstractmethod
     def execute(self, graph_manager: 'GraphManager', generation: int):
+        pass
+
+    def get_state(self) -> dict:
+        return {}
+
+    def set_state(self, state: dict):
         pass
 
 # --- Concrete Action Implementations ---
@@ -40,7 +55,8 @@ class NodeFusionAction(GraphAction):
         self.embedding_manager = embedding_manager
 
     def execute(self, graph_manager: 'GraphManager', generation: int):
-        threshold = self.config.get('similarity_threshold', 0.95)
+        params = self.config.get('params', {})
+        threshold = params.get('similarity_threshold')
         graph = graph_manager.get_graph()
         
         potential_fusions = []
@@ -97,7 +113,8 @@ class NodeDivisionAction(GraphAction):
         self.llm_service = llm_service
 
     def execute(self, graph_manager: 'GraphManager', generation: int):
-        max_nodes = self.config.get('max_graph_nodes', 250)
+        params = self.config.get('params', {})
+        max_nodes = params.get('max_graph_nodes')
         graph = graph_manager.get_graph()
         if graph.number_of_nodes() >= max_nodes: return
 
@@ -167,6 +184,76 @@ class NodeDivisionAction(GraphAction):
             for _, succ, data in conn1: graph.add_edge(new_ids[0], succ, **data)
             for _, succ, data in conn2: graph.add_edge(new_ids[1], succ, **data)
 
+class NodeDeathAction(GraphAction):
+    """An action that removes persistently low-fitness nodes and rewires their neighbors."""
+    def __init__(self, config: Dict):
+        super().__init__(config)
+        self.low_fitness_streaks: Dict[Any, int] = {}
+
+    def get_state(self) -> dict:
+        return {"low_fitness_streaks": self.low_fitness_streaks}
+
+    def set_state(self, state: dict):
+        self.low_fitness_streaks = state.get("low_fitness_streaks", {})
+        # Ensure keys are of the correct type (e.g., int) if loaded from JSON
+        self.low_fitness_streaks = {int(k): v for k, v in self.low_fitness_streaks.items()}
+
+    def execute(self, graph_manager: 'GraphManager', generation: int):
+        params = self.config.get('params', {})
+        nodes_data = graph_manager.get_all_nodes_data()
+        scores = [data.current_meme_score for data in nodes_data.values() if data.current_meme_score is not None]
+        if not scores: return
+        
+        percentile_val = params.get('fitness_percentile_threshold', 0.2) * 100
+        weakness_threshold = np.percentile(scores, percentile_val)
+        
+        weak_nodes_this_gen = {
+            nid for nid, data in nodes_data.items()
+            if data.current_meme_score is not None and data.current_meme_score <= weakness_threshold
+        }
+        
+        nodes_to_remove = set()
+        for node_id in list(graph_manager.get_all_node_ids()):
+            if node_id in weak_nodes_this_gen:
+                self.low_fitness_streaks[node_id] = self.low_fitness_streaks.get(node_id, 0) + 1
+            else:
+                self.low_fitness_streaks.pop(node_id, None)
+
+            if self.low_fitness_streaks.get(node_id, 0) > self.config.get('consecutive_generations_threshold', 10):
+                nodes_to_remove.add(node_id)
+        
+        for dead_node_id in nodes_to_remove:
+            self._process_node_death(graph_manager, dead_node_id)
+
+    def _process_node_death(self, graph_manager: 'GraphManager', dead_node_id: Any):
+        logger.info(f"Node {dead_node_id} is being removed due to persistent low fitness.")
+        
+        graph = graph_manager.get_graph()
+        in_neighbors = list(graph.predecessors(dead_node_id))
+        out_neighbors = list(graph.successors(dead_node_id))
+        
+        all_weights = [d['weight'] for _, _, d in graph.out_edges(dead_node_id, data=True) if 'weight' in d] + \
+                      [d['weight'] for _, _, d in graph.in_edges(dead_node_id, data=True) if 'weight' in d]
+        avg_weight = sum(all_weights) / len(all_weights) if all_weights else 0.5
+        
+        self._rewire_neighborhood(graph, in_neighbors, out_neighbors, avg_weight)
+        
+        graph.remove_node(dead_node_id)
+        self.low_fitness_streaks.pop(dead_node_id, None)
+
+    def _rewire_neighborhood(self, graph: nx.DiGraph, in_neighbors: List, out_neighbors: List, avg_weight: float):
+        self._connect_nodes_in_circle(graph, in_neighbors, avg_weight)
+        self._connect_nodes_in_circle(graph, out_neighbors, avg_weight)
+
+    def _connect_nodes_in_circle(self, graph: nx.DiGraph, nodes: List, new_weight: float):
+        if len(nodes) < 2: return
+        
+        sorted_nodes = sorted(nodes)
+        for i, source_node in enumerate(sorted_nodes):
+            target_node = sorted_nodes[(i + 1) % len(sorted_nodes)]
+            if not graph.has_edge(source_node, target_node):
+                graph.add_edge(source_node, target_node, weight=new_weight)
+
 # --- Composite and Null Strategies ---
 
 class NullDynamicsStrategy(GraphDynamicsStrategy):
@@ -177,7 +264,7 @@ class NullDynamicsStrategy(GraphDynamicsStrategy):
 class CompositeDynamicsStrategy(GraphDynamicsStrategy):
     """An orchestrator that executes a list of individual GraphAction objects."""
     def __init__(self, actions: List[GraphAction], config: Dict):
-        self.actions = [action for action in actions if action.config.get('enabled', False)]
+        self.actions = {type(a).__name__: a for a in actions if a.config.get('enabled', False)}
         self.dyn_config = config.get('dynamic_graph', {})
 
     def execute(self, graph_manager: 'GraphManager', generation: int):
@@ -185,6 +272,14 @@ class CompositeDynamicsStrategy(GraphDynamicsStrategy):
             return
         
         logger.info(f"Generation {generation}: Checking for graph dynamic updates.")
-        for action in self.actions:
+        for action in self.actions.values():
             if generation % action.config.get('check_every_n_generations', 1) == 0:
                 action.execute(graph_manager, generation)
+
+    def get_state(self) -> dict:
+        return {name: action.get_state() for name, action in self.actions.items()}
+
+    def set_state(self, state: dict):
+        for name, action_state in state.items():
+            if name in self.actions:
+                self.actions[name].set_state(action_state)

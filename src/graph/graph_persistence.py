@@ -3,7 +3,7 @@ import json
 import logging
 import numpy as np
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Dict
 from networkx.readwrite import json_graph
 
 from data_structures import MemeNodeData, PropagationEvent
@@ -13,9 +13,10 @@ logger = logging.getLogger(__name__)
 class GraphPersistence:
     """Handles saving and loading the graph state and propagation history."""
 
-    def save_graph(self, graph: nx.DiGraph, filepath: Path, last_completed_generation: int):
+    def save_graph(self, graph: nx.DiGraph, filepath: Path, last_completed_generation: int, dynamics_state: Dict):
         try:
             graph.graph['last_completed_generation'] = last_completed_generation
+            graph.graph['dynamics_state'] = dynamics_state
             serializable_data = json_graph.node_link_data(graph)
             
             for node_dict in serializable_data.get('nodes', []):
@@ -34,7 +35,7 @@ class GraphPersistence:
         except Exception as e:
             logger.error(f"Failed to save graph to {filepath}: {e}", exc_info=True)
 
-    def load_graph(self, filepath: Path) -> Tuple[Optional[nx.DiGraph], int]:
+    def load_graph(self, filepath: Path) -> Tuple[Optional[nx.DiGraph], int, Dict]:
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -55,11 +56,12 @@ class GraphPersistence:
 
             graph = json_graph.node_link_graph(data, directed=True, multigraph=False)
             last_gen = graph.graph.get('last_completed_generation', -1)
+            dynamics_state = graph.graph.get('dynamics_state', {})
             logger.info(f"Graph loaded successfully from {filepath}, completed up to generation {last_gen}")
-            return graph, last_gen
+            return graph, last_gen, dynamics_state
         except (FileNotFoundError, json.JSONDecodeError) as e:
             logger.error(f"Failed to load graph from {filepath}: {e}")
-            return None, -1
+            return None, -1, {}
 
     def save_propagation_history(self, history: List[PropagationEvent], filepath: Path):
         if not history: return
