@@ -1,5 +1,8 @@
+# Python
 __pycache__/
+
+# IDE / Editor
 .vscode/
-saved/
-vis/
-src/simulation.log
+
+# Simulation Outputs
+experiments/
