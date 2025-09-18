@@ -4,7 +4,7 @@ This repository contains the source code for the research paper:
 
 **"Selection in the Meme Pool: Graph-Based Evolution of Textual Content"**
 
-(TODO: link to paper)
+(TODO: link the paper)
 
 ## Abstract
 
