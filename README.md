@@ -4,9 +4,7 @@ This repository contains the source code for the research paper:
 
 **"Selection in the Meme Pool: Graph-Based Evolution of Textual Content"**
 
-*Karlo Babić*
-
-(Link to paper: TODO)
+(TODO: link to paper)
 
 ## Abstract
 
@@ -69,8 +67,15 @@ The `config.yaml` file is central to controlling the simulation. Main sections i
 If you use this code or framework in your research, please cite the original paper:
 
 ```bibtex
-TODO
-K. Babić. "Selection in the Meme Pool: Graph-Based Evolution of Textual Content." ECAI, 2025, Bologna, Italy. Accepted for publication.
+Not yet published
+@inproceedings{babic2025selection,
+  author    = {Babi\'{c}, Karlo},
+  title     = {Selection in the Meme Pool: Graph-Based Evolution of Textual Content},
+  booktitle = {Proceedings of the 28th European Conference on Artificial Intelligence (ECAI 2025)},
+  year      = {2025},
+  address   = {Bologna, Italy},
+  note      = {Accepted for publication}
+}
 ```
 
 ## Semantic Space Evolution Animation
