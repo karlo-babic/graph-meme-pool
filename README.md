@@ -1,4 +1,4 @@
-# Graph Meme Pool (GMP)
+# Graph Meme Pool (GMP) v1
 
 This repository contains the source code for the research paper:
 
