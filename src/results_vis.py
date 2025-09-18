@@ -4,7 +4,7 @@ from pathlib import Path
 import time
 
 from config_loader import load_config
-from graph_manager import GraphManager
+from graph.graph_manager import GraphManager
 from llm_service import LLMService
 from evolution_engine import EvolutionEngine
 from visualizer import Visualizer

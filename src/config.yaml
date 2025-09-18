@@ -18,6 +18,7 @@ graph_generation:
 
 dynamic_graph:
   enabled: true
+  strategy: 'fusion_division' # 'null' for static graph, 'fusion_division' for dynamic
   initial_static_generations: 20 # No dynamic changes for the first n generations
   check_every_n_generations: 1
   fusion:

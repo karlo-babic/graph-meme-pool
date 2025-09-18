@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Tuple, Set, Any
 import numpy as np
 import re
 
-from graph_manager import GraphManager
+from graph.graph_manager import GraphManager
 from llm_service import LLMServiceInterface
 from fitness_model import FitnessModel
 from embeddings_utils import EmbeddingManager
@@ -17,13 +17,13 @@ class EvolutionEngine:
     def __init__(self,
                  graph_manager: GraphManager,
                  llm_service: LLMServiceInterface,
+                 embedding_manager: EmbeddingManager,
                  config: Dict,
-                 fitness_model: Optional[FitnessModel] = None,
-                 embedding_manager: Optional[EmbeddingManager] = None):
+                 fitness_model: Optional[FitnessModel] = None):
         self.graph_manager = graph_manager
         self.llm_service = llm_service
-        self.fitness_model = fitness_model
         self.embedding_manager = embedding_manager
+        self.fitness_model = fitness_model
         self.config = config['simulation']
         self.llm_config = config['llm']
         self.fitness_model_huggingpath = self.config['fitness_model_huggingpath'].lower()
@@ -217,11 +217,6 @@ class EvolutionEngine:
             all_memes_in_play.add(data.current_meme)
             if data.current_meme_score is not None and not np.isnan(data.current_meme_score):
                 meme_score_cache[data.current_meme] = data.current_meme_score
-                if len(data.history_scores) < len(data.history):
-                    padding = [np.nan] * (len(data.history) - 1 - len(data.history_scores))
-                    data.history_scores.extend(padding)
-                    data.history_scores.append(data.current_meme_score)
-
             for _, meme, _ in data.received_memes:
                 all_memes_in_play.add(meme)
 
@@ -232,10 +227,9 @@ class EvolutionEngine:
             new_scores = self._score_memes(memes_needing_score)
             meme_score_cache.update({meme: score for meme, score in zip(memes_needing_score, new_scores) if score is not None})
 
-        # Ensure all necessary embeddings are cached for this generation
-        if all_memes_in_play and self.embedding_manager:
-            logger.info(f"Generation {generation}: Ensuring embeddings are cached for {len(all_memes_in_play)} unique memes in play.")
-            self.embedding_manager.get_embeddings(list(all_memes_in_play))
+        # Calculate and cache embeddings for all relevant memes using the manager
+        logger.info(f"Generation {generation}: Caching embeddings for {len(all_memes_in_play)} unique memes.")
+        self.embedding_manager.get_embeddings(list(all_memes_in_play))
 
         # Decide actions for each node
         updates_pending: Dict[Any, Dict[str, Any]] = {}
@@ -251,19 +245,20 @@ class EvolutionEngine:
 
             # Select best candidate meme
             best_sender_id, best_received_meme, best_received_score = None, None, -1.0
-            if self.selection_strategy == 'fitness_similarity_product' and self.embedding_manager:
+            if self.selection_strategy == 'fitness_similarity_product':
                 best_combined_score = -1.0
                 for sender_id, meme, _ in data.received_memes:
                     received_fitness = meme_score_cache.get(meme)
                     if received_fitness is not None:
-                        similarity = (self.embedding_manager.get_similarity(current_meme, meme) + 1) / 2
-                        combined_score = received_fitness * similarity
+                        similarity = self.embedding_manager.get_similarity(current_meme, meme)
+                        combined_score = received_fitness * (similarity + 1) / 2 # Normalize similarity to 0-1
                         if combined_score > best_combined_score:
                             best_combined_score = combined_score
                             best_received_meme = meme
                             best_sender_id = sender_id
                 if best_received_meme:
                     best_received_score = meme_score_cache.get(best_received_meme, -1.0)
+            
             elif self.selection_strategy == 'fitness':
                 for sender_id, meme, _ in data.received_memes:
                     score = meme_score_cache.get(meme)
@@ -277,14 +272,19 @@ class EvolutionEngine:
 
             # --- MERGE DECISION LOGIC ---
             action_type = "keep"
-            if 1 - threshold <= score_ratio and self.embedding_manager:
-                similarity = (self.embedding_manager.get_similarity(current_meme, best_received_meme) + 1) / 2
+            #if 1 - threshold <= score_ratio <= 1 + threshold:
+            if 1 - threshold <= score_ratio:
+                similarity = self.embedding_manager.get_similarity(current_meme, best_received_meme)
+                #print(f"similarity: {similarity:.2f}\nCurrent meme: {current_meme}\nBest received meme: {best_received_meme}\n")
                 if similarity >= converge_thresh:
                     action_type = "merge_converge"
                     merge_converge_candidates.append((current_meme, best_received_meme))
                 elif similarity >= influence_thresh:
                     action_type = "merge_influence"
                     merge_influence_candidates.append((current_meme, best_received_meme))
+            #elif score_ratio > 1 + threshold:
+            #    action_type = "mutate"
+            #    mutation_candidates.append(best_received_meme)
 
             if action_type != "keep":
                 self.graph_manager.record_propagation(generation, best_sender_id, node_id, best_received_meme)
@@ -293,7 +293,7 @@ class EvolutionEngine:
                     "current_meme": current_meme,
                     "received_meme": best_received_meme
                 }
-                
+
         # Perform LLM mutations and merges
         mutated_memes_map: Dict[str, str] = {}
         merged_memes_map: Dict[Tuple[str, str], str] = {}
@@ -321,9 +321,6 @@ class EvolutionEngine:
             for pair, merged_result in zip(unique_candidates, results):
                 print(f"Meme 1: {pair[0]}\nMeme 2: {pair[1]}\nResult: {merged_result}\n")
                 merged_memes_map[pair] = merged_result
-
-        # Score the newly generated memes
-        all_generated_memes = list(mutated_memes_map.values()) + list(merged_memes_map.values())
 
         # Score the newly generated memes
         all_generated_memes = list(mutated_memes_map.values()) + list(merged_memes_map.values())
@@ -476,7 +473,7 @@ class EvolutionEngine:
                 self.step(current_gen_index)
                 
                 # Dynamic graph update phase
-                self.graph_manager.update_graph_topology(current_gen_index)
+                self.graph_manager.update_topology(current_gen_index)
 
                 last_completed_generation_index = current_gen_index
                 # Yield the index of the completed generation for external processing (like visualization)

@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional, Tuple, List
 
 from PIL import Image
 
-from graph_manager import GraphManager
+from graph.graph_manager import GraphManager
 from data_structures import MemeNodeData
 import embeddings_utils as emb_utils
 from embeddings_utils import EmbeddingManager
