@@ -41,7 +41,7 @@ dynamic_graph:
         connection_subset_ratio: 0.5
 
 simulation:
-  generations: 100
+  generations: 500
   threshold: 0.2  # Score ratio threshold for merge/mutate/keep decision
   selection_strategy: 'fitness_similarity_product' # 'fitness' or 'fitness_similarity_product'
   merge_converge_similarity_threshold: 0.9 # Min similarity for converge merge
