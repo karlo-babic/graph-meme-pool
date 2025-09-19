@@ -186,6 +186,7 @@ if __name__ == "__main__":
             if visualizer:
                 if config['visualization']['draw_score_per_gen']: visualizer.draw_score(generation=completed_generation_index)
                 if config['visualization']['draw_change_per_gen']: visualizer.draw_change(generation=completed_generation_index)
+                if config['visualization']['plot_score_history_individual']: visualizer.plot_score_history_individual_nodes()
 
     except Exception as e:
         logger.critical(f"Simulation failed during execution: {e}", exc_info=True)

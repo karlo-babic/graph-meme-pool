@@ -1218,6 +1218,130 @@ class Visualizer:
 
 
 
+    def plot_score_history_individual_nodes(self):
+        """
+        Plots the score history for every individual node over the simulation's
+        global timeline, accounting for dynamic node creation.
+
+        Each node's trajectory is represented as a line, colored by its group.
+        The line's opacity is proportional to the node's total connection
+        weight (in + out), highlighting more influential or receptive nodes.
+        A prominent line shows the average score across all active nodes at each
+        generation.
+        """
+        G = self.graph_manager.get_graph()
+        if G.number_of_nodes() == 0:
+            logger.warning("Skipping individual score history plot: Graph has no nodes.")
+            return
+
+        # 1. Calculate total connection weights for opacity scaling
+        node_weights = {}
+        for node_id in G.nodes():
+            in_w = sum(d.get('weight', 0.0) for _, _, d in G.in_edges(node_id, data=True))
+            out_w = sum(d.get('weight', 0.0) for _, _, d in G.out_edges(node_id, data=True))
+            node_weights[node_id] = in_w + out_w
+
+        min_w = min(node_weights.values()) if node_weights else 0
+        max_w = max(node_weights.values()) if node_weights else 1
+        weight_range = max_w - min_w if (max_w - min_w) > 1e-6 else 1.0
+
+        # 2. Extract and align data for plotting
+        all_nodes_data = self.graph_manager.get_all_nodes_data()
+        scores_per_generation = defaultdict(list)
+        plot_data = []
+
+        for node_id, data in all_nodes_data.items():
+            if not (data and data.history_scores):
+                continue
+
+            # Align this node's local history to the global simulation timeline
+            creation_gen = data.creation_generation
+            x_values = [creation_gen + i for i in range(len(data.history_scores))]
+            y_values = data.history_scores
+
+            # Store scores for the global average calculation
+            for gen, score in zip(x_values, y_values):
+                if score is not None:
+                    scores_per_generation[gen].append(score)
+
+            # Calculate opacity based on the node's total connection weight
+            norm_w = (node_weights.get(node_id, 0) - min_w) / weight_range
+            min_alpha, max_alpha = 0.05, 0.5  # Define the opacity range
+            alpha = min_alpha + norm_w * (max_alpha - min_alpha)
+
+            plot_data.append({
+                'xs': x_values,
+                'ys': y_values,
+                'group': data.group if data.group is not None else 0,
+                'alpha': alpha
+            })
+
+        if not scores_per_generation:
+            logger.warning("No score data found to plot individual history.")
+            return
+
+        # 3. Calculate the global average score per generation
+        avg_gens = sorted(scores_per_generation.keys())
+        avg_scores = [np.mean([s for s in scores_per_generation[g] if s is not None]) for g in avg_gens]
+
+        # 4. Plotting
+        plt.figure(figsize=(15, 8))
+
+        # Create a color map for the groups
+        unique_groups = sorted(list(set(d['group'] for d in plot_data)))
+        colors = plt.cm.get_cmap('tab10', len(unique_groups))
+        group_to_color = {group: colors(i) for i, group in enumerate(unique_groups)}
+
+        # Plot individual node trajectories first
+        for data in plot_data:
+            valid_points = [(x, y) for x, y in zip(data['xs'], data['ys']) if y is not None]
+            if not valid_points: continue
+            plot_xs, plot_ys = zip(*valid_points)
+            plt.plot(plot_xs, plot_ys,
+                     color=group_to_color.get(data['group']),
+                     alpha=data['alpha'],
+                     linewidth=0.8)
+
+        # Plot the average score line on top to ensure it's visible
+        plt.plot(avg_gens, avg_scores,
+                 color='black',
+                 linewidth=2.5,
+                 linestyle='--',
+                 label='Average Score (All Nodes)')
+
+        # 5. Finalize and save the plot
+        plt.title("Score History of Individual Memes")
+        plt.xlabel("Generation")
+        plt.ylabel("Meme Score")
+        plt.ylim(0, 1)
+        plt.xlim(left=0)
+        plt.grid(True, linestyle='--', alpha=0.6)
+
+        # Create a custom legend
+        legend_handles = [patches.Patch(color=c, label=f'Group {g}') for g, c in group_to_color.items()]
+        legend_handles.append(plt.Line2D([0], [0], color='black', lw=2.5, ls='--', label='Average Score'))
+        plt.legend(handles=legend_handles, loc='best')
+
+        filename = self.vis_dir / "plot_score_history_individual.png"
+        try:
+            plt.savefig(filename, bbox_inches='tight', dpi=self.vis_config['dpi'])
+            logger.info(f"Saved individual score history plot to {filename}")
+        except Exception as e:
+            logger.error(f"Failed to save individual score history plot {filename}: {e}")
+        plt.close()
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     def generate_centroid_closest_meme_table(self, num_generations: int = -1):
         """

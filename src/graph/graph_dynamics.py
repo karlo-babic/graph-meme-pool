@@ -74,10 +74,10 @@ class NodeFusionAction(GraphAction):
         fused_nodes = set()
         for _, u, v in potential_fusions:
             if u not in fused_nodes and v not in fused_nodes:
-                self._fuse_nodes(graph_manager, u, v)
+                self._fuse_nodes(graph_manager, u, v, generation)
                 fused_nodes.update([u, v])
 
-    def _fuse_nodes(self, graph_manager: 'GraphManager', u: Any, v: Any):
+    def _fuse_nodes(self, graph_manager: 'GraphManager', u: Any, v: Any, generation: int):
         data_u = graph_manager.get_node_data(u)
         data_v = graph_manager.get_node_data(v)
         if not data_u or not data_v: return
@@ -89,7 +89,8 @@ class NodeFusionAction(GraphAction):
         new_id = graph_manager.get_next_node_id()
         new_data = MemeNodeData(node_id=new_id, current_meme=parent1_data.current_meme,
                                 current_meme_score=parent1_data.current_meme_score,
-                                group=parent1_data.group, parents=[parent1_id, parent2_id])
+                                group=parent1_data.group, parents=[parent1_id, parent2_id],
+                                creation_generation=generation)
         
         graph = graph_manager.get_graph()
         graph.add_node(new_id, data=new_data)
@@ -134,9 +135,9 @@ class NodeDivisionAction(GraphAction):
         
         for node_id in candidates:
             if graph.number_of_nodes() >= max_nodes - 1: break
-            self._divide_node(graph_manager, node_id)
+            self._divide_node(graph_manager, node_id, generation)
 
-    def _divide_node(self, graph_manager: 'GraphManager', node_id: Any):
+    def _divide_node(self, graph_manager: 'GraphManager', node_id: Any, generation: int):
         original_data = graph_manager.get_node_data(node_id)
         if not original_data: return
 
@@ -153,7 +154,8 @@ class NodeDivisionAction(GraphAction):
         new_ids = [graph_manager.get_next_node_id(), graph_manager.get_next_node_id()]
         for i, new_id in enumerate(new_ids):
             new_data = MemeNodeData(node_id=new_id, current_meme=mutated[i],
-                                    group=original_data.group, parents=[node_id])
+                                    group=original_data.group, parents=[node_id],
+                                    creation_generation=generation)
             graph.add_node(new_id, data=new_data)
 
         ratio = self.config.get('connection_subset_ratio', 0.5)

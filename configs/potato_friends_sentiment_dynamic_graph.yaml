@@ -23,7 +23,7 @@ dynamic_graph:
       check_every_n_generations: 1
       params:
         consecutive_generations_threshold: 2
-        fitness_percentile_threshold: 0.1 # Bottom 10%
+        fitness_percentile_threshold: 0.2 # Bottom 20%
     - type: 'fusion'
       enabled: true
       check_every_n_generations: 1
@@ -94,6 +94,7 @@ visualization:
   # Per-generation plots
   draw_change_per_gen: true
   draw_score_per_gen: true
+  plot_score_history_individual: true
   draw_semantic_diff_per_gen: false
   # Final plots
   draw_final_embs: true
