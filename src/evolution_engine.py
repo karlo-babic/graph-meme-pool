@@ -308,19 +308,19 @@ class EvolutionEngine:
             unique_candidates = list(dict.fromkeys(merge_converge_candidates))
             logger.info(f"Generation {generation}: Converge-merging {len(unique_candidates)} unique pairs.")
             results = self.llm_service.merge_converge([p[0] for p in unique_candidates], [p[1] for p in unique_candidates], temperature=self.llm_config['temperature_merge'])
-            print("\n=== Converge Merge Results ===\n")
+            #print("\n=== Converge Merge Results ===\n")
             for pair, merged_result in zip(unique_candidates, results):
-                print(f"Meme 1: {pair[0]}\nMeme 2: {pair[1]}\nResult: {merged_result}\n")
                 merged_memes_map[pair] = merged_result
+                #print(f"Meme 1: {pair[0]}\nMeme 2: {pair[1]}\nResult: {merged_result}\n")
         
         if merge_influence_candidates:
             unique_candidates = list(dict.fromkeys(merge_influence_candidates))
             logger.info(f"Generation {generation}: Influence-merging {len(unique_candidates)} unique pairs.")
             results = self.llm_service.merge_influence([p[0] for p in unique_candidates], [p[1] for p in unique_candidates], temperature=self.llm_config['temperature_merge'])
-            print("\n=== Influence Merge Results ===\n")
+            #print("\n=== Influence Merge Results ===\n")
             for pair, merged_result in zip(unique_candidates, results):
-                print(f"Meme 1: {pair[0]}\nMeme 2: {pair[1]}\nResult: {merged_result}\n")
                 merged_memes_map[pair] = merged_result
+                #print(f"Meme 1: {pair[0]}\nMeme 2: {pair[1]}\nResult: {merged_result}\n")
 
         # Score the newly generated memes
         all_generated_memes = list(mutated_memes_map.values()) + list(merged_memes_map.values())
@@ -452,6 +452,10 @@ class EvolutionEngine:
         """Performs one full generation step: propagate, process."""
         logger.info(f"--- Starting Generation {generation_index} ---")
 
+        # Dynamic graph update phase
+        self.graph_manager.update_topology(generation_index)
+
+        # Evolution phase
         self._propagate_memes(generation_index)
         self._process_received_memes(generation_index)
 
@@ -471,9 +475,6 @@ class EvolutionEngine:
         for current_gen_index in range(start_generation_index, end_generation_index):
             try:
                 self.step(current_gen_index)
-                
-                # Dynamic graph update phase
-                self.graph_manager.update_topology(current_gen_index)
 
                 last_completed_generation_index = current_gen_index
                 # Yield the index of the completed generation for external processing (like visualization)

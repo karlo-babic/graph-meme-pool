@@ -16,14 +16,14 @@ graph_generation:
 
 dynamic_graph:
   enabled: true
-  initial_static_generations: 0
+  initial_static_generations: 10
   actions:
     - type: 'death'
       enabled: true
       check_every_n_generations: 1
       params:
         consecutive_generations_threshold: 2
-        fitness_percentile_threshold: 0.05 # Bottom 5%
+        fitness_percentile_threshold: 0.1 # Bottom 10%
     - type: 'fusion'
       enabled: true
       check_every_n_generations: 1
@@ -37,7 +37,7 @@ dynamic_graph:
         # To consider division, a node must have at least this many in/out connections
         min_in_degree: 2
         min_out_degree: 2
-        fitness_top_percent: 0.2 # Top % fittest nodes are candidates
+        fitness_top_percent: 0.2 # Top 20% fittest nodes are candidates
         connection_subset_ratio: 0.5
 
 simulation:
