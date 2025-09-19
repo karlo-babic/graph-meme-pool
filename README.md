@@ -1,10 +1,8 @@
 # Graph Meme Pool (GMP) v1
 
-This repository contains the source code for the research paper:
+You are viewing the `v1` branch, which contains the specific version of the code used for the research paper: **"Selection in the Meme Pool: Graph-Based Evolution of Textual Content"**. (TODO: link the paper)
 
-**"Selection in the Meme Pool: Graph-Based Evolution of Textual Content"**
-
-(TODO: link the paper)
+This branch is for archival and reproducibility purposes. For the latest features, bug fixes, and active development, please use the **[`main` branch](https://github.com/karlo-babic/graph-meme-pool/tree/main)**.
 
 ## Abstract
 
