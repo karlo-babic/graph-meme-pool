@@ -23,12 +23,12 @@ dynamic_graph:
       check_every_n_generations: 1
       params:
         consecutive_generations_threshold: 2
-        fitness_percentile_threshold: 0.1 # Bottom 10%
+        fitness_percentile_threshold: 0.05 # Bottom 5%
     - type: 'fusion'
       enabled: true
       check_every_n_generations: 1
       params:
-        similarity_threshold: 0.95 # Min similarity for fusion
+        similarity_threshold: 0.97 # Min similarity for fusion
     - type: 'division'
       enabled: true
       check_every_n_generations: 1
