@@ -10,13 +10,50 @@ logger = logging.getLogger(__name__)
 class GraphManager:
     """Manages the in-memory NetworkX graph, node data, and propagation history."""
 
-    def __init__(self, graph: nx.DiGraph):
+    def __init__(self, graph: nx.DiGraph, graveyard: Optional[Dict[Any, MemeNodeData]] = None):
         self.graph = graph
+        self.graveyard: Dict[Any, MemeNodeData] = graveyard if graveyard is not None else {}
         self.propagation_history: List[PropagationEvent] = []
         self.dynamics_strategy: GraphDynamicsStrategy = NullDynamicsStrategy()
         self.next_node_id = 0
-        if self.graph.nodes():
-            self.next_node_id = max(list(self.graph.nodes())) + 1
+        if self.graph.nodes() or self.graveyard:
+            all_ids = list(self.graph.nodes()) + list(self.graveyard.keys())
+            if all_ids:
+                # Ensure IDs are integers for max() to work correctly
+                numeric_ids = [int(i) for i in all_ids]
+                self.next_node_id = max(numeric_ids) + 1
+
+    def remove_node(self, node_id: Any, generation: int):
+        """
+        Removes a node from the active graph and moves its data to the graveyard.
+        This ensures node history is preserved for post-simulation analysis.
+        """
+        if node_id not in self.graph:
+            logger.warning(f"Attempted to remove non-existent node {node_id}.")
+            return
+
+        node_data = self.get_node_data(node_id)
+        if node_data:
+            node_data.death_generation = generation
+            self.graveyard[node_id] = node_data
+            logger.debug(f"Node {node_id} data moved to graveyard at generation {generation}.")
+        else:
+            logger.warning(f"Node {node_id} removed but had no associated data to archive.")
+        
+        self.graph.remove_node(node_id)
+
+    def get_graveyard(self) -> Dict[Any, MemeNodeData]:
+        """Returns the dictionary of archived (dead) node data."""
+        return self.graveyard
+
+    def get_all_nodes_data_incl_graveyard(self) -> Dict[Any, MemeNodeData]:
+        """
+        Returns a combined dictionary of data from both active and archived nodes.
+        Useful for final analysis and visualization.
+        """
+        all_data = self.get_all_nodes_data()
+        all_data.update(self.graveyard)
+        return all_data
 
     def get_graph(self) -> nx.DiGraph:
         """Returns the raw NetworkX DiGraph object."""

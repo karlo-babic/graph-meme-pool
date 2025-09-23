@@ -13,6 +13,7 @@ class MemeNodeData:
     group: Optional[int] = None # Group identifier, if applicable
     parents: List[Any] = field(default_factory=list) # For lineage tracking
     creation_generation: int = 0 # Track when the node was created
+    death_generation: Optional[int] = None # Track when the node was removed
 
     def __post_init__(self):
         # Ensure initial meme is in history if history is empty

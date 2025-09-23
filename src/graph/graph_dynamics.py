@@ -104,7 +104,8 @@ class NodeFusionAction(GraphAction):
         for succ, data in out_edges.items():
             if succ not in (u, v): graph.add_edge(new_id, succ, **data)
         
-        graph.remove_nodes_from([u, v])
+        graph_manager.remove_node(u, generation)
+        graph_manager.remove_node(v, generation)
         logger.info(f"Fused nodes {u} and {v} into new node {new_id}.")
 
 class NodeDivisionAction(GraphAction):
@@ -166,7 +167,7 @@ class NodeDivisionAction(GraphAction):
 
         graph.add_edge(new_ids[0], new_ids[1], weight=avg_weight)
         graph.add_edge(new_ids[1], new_ids[0], weight=avg_weight)
-        graph.remove_node(node_id)
+        graph_manager.remove_node(node_id, generation)
         logger.info(f"Divided node {node_id} into new nodes {new_ids[0]} and {new_ids[1]}.")
 
     def _assign_split_connections(self, graph: nx.DiGraph, connections: list, ratio: float, new_ids: list, direction: str):
@@ -225,9 +226,9 @@ class NodeDeathAction(GraphAction):
                 nodes_to_remove.add(node_id)
         
         for dead_node_id in nodes_to_remove:
-            self._process_node_death(graph_manager, dead_node_id)
+            self._process_node_death(graph_manager, dead_node_id, generation)
 
-    def _process_node_death(self, graph_manager: 'GraphManager', dead_node_id: Any):
+    def _process_node_death(self, graph_manager: 'GraphManager', dead_node_id: Any, generation: int):
         logger.info(f"Node {dead_node_id} is being removed due to persistent low fitness.")
         
         graph = graph_manager.get_graph()
@@ -240,7 +241,7 @@ class NodeDeathAction(GraphAction):
         
         self._rewire_neighborhood(graph, in_neighbors, out_neighbors, avg_weight)
         
-        graph.remove_node(dead_node_id)
+        graph_manager.remove_node(dead_node_id, generation)
         self.low_fitness_streaks.pop(dead_node_id, None)
 
     def _rewire_neighborhood(self, graph: nx.DiGraph, in_neighbors: List, out_neighbors: List, avg_weight: float):

@@ -1220,21 +1220,19 @@ class Visualizer:
 
     def plot_score_history_individual_nodes(self):
         """
-        Plots the score history for every individual node over the simulation's
-        global timeline, accounting for dynamic node creation.
+        Plots the score history for every node that ever existed, ensuring that
+        the "Average Score" line for any generation 't' is calculated using only
+        the nodes that were active during that specific generation.
 
-        Each node's trajectory is represented as a line, colored by its group.
-        The line's opacity is proportional to the node's total connection
-        weight (in + out), highlighting more influential or receptive nodes.
-        A prominent line shows the average score across all active nodes at each
-        generation.
+        - Individual node trajectories are drawn for their entire lifespan.
+        - Opacity is proportional to a node's final connection weight, making
+          removed nodes appear fainter.
+        - The average line provides a clear trend of the active population's fitness.
         """
         G = self.graph_manager.get_graph()
-        if G.number_of_nodes() == 0:
-            logger.warning("Skipping individual score history plot: Graph has no nodes.")
-            return
+        # Note: G is the final active graph. Weights are calculated from this state.
 
-        # 1. Calculate total connection weights for opacity scaling
+        # 1. Calculate total connection weights for opacity scaling (from active graph)
         node_weights = {}
         for node_id in G.nodes():
             in_w = sum(d.get('weight', 0.0) for _, _, d in G.in_edges(node_id, data=True))
@@ -1245,8 +1243,8 @@ class Visualizer:
         max_w = max(node_weights.values()) if node_weights else 1
         weight_range = max_w - min_w if (max_w - min_w) > 1e-6 else 1.0
 
-        # 2. Extract and align data for plotting
-        all_nodes_data = self.graph_manager.get_all_nodes_data()
+        # 2. Extract and align data from ALL nodes (active + graveyard)
+        all_nodes_data = self.graph_manager.get_all_nodes_data_incl_graveyard()
         scores_per_generation = defaultdict(list)
         plot_data = []
 
@@ -1259,14 +1257,24 @@ class Visualizer:
             x_values = [creation_gen + i for i in range(len(data.history_scores))]
             y_values = data.history_scores
 
-            # Store scores for the global average calculation
-            for gen, score in zip(x_values, y_values):
-                if score is not None:
-                    scores_per_generation[gen].append(score)
+            # For the global average, only include scores from nodes while they were active.
+            # A node is active if its death_generation is None, or if the current
+            # generation is less than its death_generation.
+            if data.death_generation is None: # Node is still active
+                for gen, score in zip(x_values, y_values):
+                    if score is not None:
+                        scores_per_generation[gen].append(score)
+            else: # Node is dead, only contribute scores up to its death
+                for gen, score in zip(x_values, y_values):
+                    if gen < data.death_generation and score is not None:
+                        scores_per_generation[gen].append(score)
 
-            # Calculate opacity based on the node's total connection weight
+            # Calculate opacity. Dead nodes have no connections in the final graph,
+            # so their weight is 0, making them automatically faint.
             norm_w = (node_weights.get(node_id, 0) - min_w) / weight_range
-            min_alpha, max_alpha = 0.05, 0.5  # Define the opacity range
+            norm_w = np.clip(norm_w, 0, 1)  # Ensure norm_w is strictly between 0 and 1
+
+            min_alpha, max_alpha = 0.05, 0.5
             alpha = min_alpha + norm_w * (max_alpha - min_alpha)
 
             plot_data.append({
@@ -1276,11 +1284,11 @@ class Visualizer:
                 'alpha': alpha
             })
 
-        if not scores_per_generation:
+        if not plot_data:
             logger.warning("No score data found to plot individual history.")
             return
 
-        # 3. Calculate the global average score per generation
+        # 3. Calculate the global average score per generation from active nodes
         avg_gens = sorted(scores_per_generation.keys())
         avg_scores = [np.mean([s for s in scores_per_generation[g] if s is not None]) for g in avg_gens]
 
@@ -1303,14 +1311,15 @@ class Visualizer:
                      linewidth=0.8)
 
         # Plot the average score line on top to ensure it's visible
-        plt.plot(avg_gens, avg_scores,
-                 color='black',
-                 linewidth=2.5,
-                 linestyle='--',
-                 label='Average Score (All Nodes)')
+        if avg_gens:
+            plt.plot(avg_gens, avg_scores,
+                     color='black',
+                     linewidth=2.5,
+                     linestyle='--',
+                     label='Average Score (Active Nodes)')
 
         # 5. Finalize and save the plot
-        plt.title("Score History of Individual Memes")
+        plt.title("Score History of Individual Memes (All Nodes Ever Lived)")
         plt.xlabel("Generation")
         plt.ylabel("Meme Score")
         plt.ylim(0, 1)
@@ -1319,7 +1328,8 @@ class Visualizer:
 
         # Create a custom legend
         legend_handles = [patches.Patch(color=c, label=f'Group {g}') for g, c in group_to_color.items()]
-        legend_handles.append(plt.Line2D([0], [0], color='black', lw=2.5, ls='--', label='Average Score'))
+        if avg_gens:
+            legend_handles.append(plt.Line2D([0], [0], color='black', lw=2.5, ls='--', label='Average Score'))
         plt.legend(handles=legend_handles, loc='best')
 
         filename = self.vis_dir / "plot_score_history_individual.png"
@@ -1329,8 +1339,6 @@ class Visualizer:
         except Exception as e:
             logger.error(f"Failed to save individual score history plot {filename}: {e}")
         plt.close()
-
-
 
 
 

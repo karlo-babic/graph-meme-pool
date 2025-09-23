@@ -19,7 +19,8 @@ class EvolutionEngine:
                  llm_service: LLMServiceInterface,
                  embedding_manager: EmbeddingManager,
                  config: Dict,
-                 fitness_model: Optional[FitnessModel] = None):
+                 fitness_model: Optional[FitnessModel] = None,
+                 avg_initial_word_count: Optional[float] = None):
         self.graph_manager = graph_manager
         self.llm_service = llm_service
         self.embedding_manager = embedding_manager
@@ -42,10 +43,14 @@ class EvolutionEngine:
              logger.critical("EvolutionEngine initialized for 'llm' fitness type, but no LLMService instance provided. Scoring will fail.")
              raise ValueError("LLMService instance is required for 'llm' fitness model type.")
         
-        # Calculate average initial word count for penalty
-        self.avg_initial_word_count: Optional[float] = self._calculate_avg_initial_word_count()
+        # Calculate or use provided average initial word count for penalty
+        self.avg_initial_word_count: Optional[float] = avg_initial_word_count if avg_initial_word_count is not None else self._calculate_avg_initial_word_count()
         if self.avg_initial_word_count is None:
             logger.warning("Could not determine average initial word count. Word count penalty will be disabled.")
+
+    def get_avg_initial_word_count(self) -> Optional[float]:
+        """Returns the calculated average initial word count for the simulation."""
+        return self.avg_initial_word_count
 
     def _calculate_avg_initial_word_count(self) -> Optional[float]:
         """Calculates the average word count of the initial memes in the graph."""

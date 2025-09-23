@@ -134,19 +134,19 @@ if __name__ == "__main__":
 
         # --- Load or Create Graph State ---
         if is_resuming:
-            graph_obj, start_gen_idx, dynamics_state = graph_persistence.load_graph(graph_filepath)
+            graph_obj, start_gen_idx, dynamics_state, graveyard, avg_initial_wc = graph_persistence.load_graph(graph_filepath)
             if graph_obj is None:
                 logger.critical("Failed to load graph state for resume. Aborting.")
                 sys.exit(1)
             start_generation_index = start_gen_idx + 1
         else:
-            start_generation_index, dynamics_state = 0, {}
+            start_generation_index, dynamics_state, graveyard, avg_initial_wc = 0, {}, {}, None
             gen_type = config['graph_generation']['type']
             initializer = ExampleGraphInitializer(config) if gen_type == 'example' else SmallWorldsInitializer(config)
             initial_memes = initializer._load_initial_memes()
             graph_obj = initializer.create(initial_memes)
 
-        graph_manager = GraphManager(graph_obj)
+        graph_manager = GraphManager(graph_obj, graveyard)
         prop_history = graph_persistence.load_propagation_history(history_filepath)
         graph_manager.set_propagation_history(prop_history)
         
@@ -165,7 +165,8 @@ if __name__ == "__main__":
             llm_service=llm_service,
             embedding_manager=embedding_manager,
             config=config,
-            fitness_model=fitness_model_instance
+            fitness_model=fitness_model_instance,
+            avg_initial_word_count=avg_initial_wc
         )
         visualizer = Visualizer(graph_manager, config, embedding_manager, visualizations_dir)
 
@@ -193,16 +194,18 @@ if __name__ == "__main__":
         if graph_manager:
             error_path = checkpoints_dir / f"{graph_basename}_error_state.json"
             dynamics_state = graph_manager.dynamics_strategy.get_state()
-            graph_persistence.save_graph(graph_manager.get_graph(), error_path, last_completed_gen_in_run, dynamics_state)
+            avg_wc = evolution_engine.get_avg_initial_word_count()
+            graph_persistence.save_graph(graph_manager.get_graph(), graph_manager.get_graveyard(), error_path, last_completed_gen_in_run, dynamics_state, avg_wc)
         sys.exit(1)
 
     # --- Final Actions ---
     logger.info("Performing final actions...")
     if graph_manager:
         dynamics_state = graph_manager.dynamics_strategy.get_state()
-        graph_persistence.save_graph(graph_manager.get_graph(), graph_filepath, last_completed_gen_in_run, dynamics_state)
+        avg_wc = evolution_engine.get_avg_initial_word_count()
+        graph_persistence.save_graph(graph_manager.get_graph(), graph_manager.get_graveyard(), graph_filepath, last_completed_gen_in_run, dynamics_state, avg_wc)
         graph_persistence.save_propagation_history(graph_manager.get_propagation_history(), history_filepath)
-
+        
     if visualizer:
         if config['visualization']['plot_final_score_history_by_group']: visualizer.plot_score_history_bygroup()
         if config['visualization']['plot_score_history_by_initial_meme']: visualizer.plot_score_history_by_initial_meme()
