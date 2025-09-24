@@ -110,6 +110,10 @@ if __name__ == "__main__":
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
     visualizations_dir.mkdir(parents=True, exist_ok=True)
     
+    snapshots_dir = experiment_dir / "snapshots"
+    if not is_resuming:
+        snapshots_dir.mkdir(parents=True, exist_ok=True)
+
     # --- Setup Logging and Save Config for New Runs ---
     log_file_path = experiment_dir / "simulation.log"
     logger = setup_logging(log_file_path, config, is_resuming)
@@ -180,13 +184,23 @@ if __name__ == "__main__":
     # --- Run Simulation ---
     last_completed_gen_in_run = -1
     try:
+        # Save the initial state (generation -1 or 0) before the loop starts
         if start_generation_index == 0:
-            evolution_engine.mutate_initial_if_all_same()
             if config['simulation']['initial_score']: evolution_engine.initialize_scores()
-        
+            # Save the state before any propagations, as generation 0
+            initial_snapshot_path = snapshots_dir / "gen_0000.json"
+            graph_persistence.save_graph_snapshot(graph_manager.get_graph(), initial_snapshot_path)
+
         simulation_generator = evolution_engine.run_simulation(start_generation_index=start_generation_index)
+        
         for completed_generation_index in simulation_generator:
             last_completed_gen_in_run = completed_generation_index
+            
+            # --- Save Snapshot of the graph state after this generation ---
+            snapshot_filename = f"gen_{completed_generation_index + 1:04d}.json"
+            snapshot_filepath = snapshots_dir / snapshot_filename
+            graph_persistence.save_graph_snapshot(graph_manager.get_graph(), snapshot_filepath)
+            
             if visualizer:
                 if config['visualization']['draw_score_per_gen']: visualizer.draw_score(generation=completed_generation_index)
                 if config['visualization']['draw_change_per_gen']: visualizer.draw_change(generation=completed_generation_index)

@@ -108,7 +108,7 @@ class GraphPersistence:
         except (FileNotFoundError, json.JSONDecodeError, KeyError) as e:
             logger.error(f"Failed to load or parse archive from {filepath}: {e}")
             return None, -1, {}, None, None
-        
+
     def save_propagation_history(self, history: List[PropagationEvent], filepath: Path):
         if not history: return
         try:
@@ -132,3 +132,22 @@ class GraphPersistence:
         except (json.JSONDecodeError, TypeError) as e:
             logger.error(f"Failed to load or process propagation history from {filepath}: {e}")
         return history
+
+    def save_graph_snapshot(self, graph: nx.DiGraph, filepath: Path):
+        """
+        Saves a snapshot of the current graph state to a JSON file.
+        This is a lightweight version for per-generation replay data.
+        """
+        try:
+            # Prepare graph data for serialization, converting MemeNodeData to a dict
+            serializable_graph_data = json_graph.node_link_data(graph)
+            for node_dict in serializable_graph_data.get('nodes', []):
+                if 'data' in node_dict and isinstance(node_dict['data'], MemeNodeData):
+                    data_as_dict = node_dict['data'].__dict__
+                    node_dict['data'] = self._serialize_node_data_dict(data_as_dict)
+
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(serializable_graph_data, f) # No indent for smaller file size
+            
+        except Exception as e:
+            logger.error(f"Failed to save graph snapshot to {filepath}: {e}", exc_info=True)
