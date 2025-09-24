@@ -468,27 +468,34 @@ class EvolutionEngine:
 
 
     def run_simulation(self, start_generation_index: int = 0):
-        """Runs the simulation loop for a configured number of generations,
-        starting from start_generation_index."""
-        num_generations_to_run = self.config['generations']
-        end_generation_index = start_generation_index + num_generations_to_run
-        logger.info(f"Starting simulation run from generation {start_generation_index} up to {end_generation_index-1}.")
+        """
+        Runs the simulation loop up to the target generation number specified
+        in the configuration, starting from start_generation_index.
+        """
+        target_generation = self.config['generations']
+        
+        if start_generation_index >= target_generation:
+            logger.info(f"Simulation already completed up to or beyond target generation ({target_generation}). Nothing to do.")
+            # Return an empty generator if there's no work to be done.
+            return
+            yield
+
+        logger.info(f"Starting simulation run from generation {start_generation_index} up to target {target_generation}.")
 
         # --- Main Evolution Loop ---
         last_completed_generation_index = start_generation_index - 1
         logger.info("Starting main evolution loop...")
-        for current_gen_index in range(start_generation_index, end_generation_index):
+        for current_gen_index in range(start_generation_index, target_generation):
             try:
                 self.step(current_gen_index)
 
                 last_completed_generation_index = current_gen_index
-                # Yield the index of the completed generation for external processing (like visualization)
+                # Yield the index of the completed generation for external processing
                 yield last_completed_generation_index
 
             except Exception as e:
-                logger.error(f"Error during generation {current_gen_index + 1}: {e}", exc_info=True)
+                logger.error(f"Error during generation {current_gen_index}: {e}", exc_info=True)
                 logger.warning("Simulation stopped due to error.")
                 break # Stop simulation on error
 
-        logger.info(f"Simulation loop finished normally after generation {last_completed_generation_index + 1}.")
-        return last_completed_generation_index + 1  # Return number of completed generations
+        logger.info(f"Simulation loop finished after generation {last_completed_generation_index + 1}.")

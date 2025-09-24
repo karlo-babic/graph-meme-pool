@@ -23,7 +23,7 @@ dynamic_graph:
       check_every_n_generations: 1
       params:
         consecutive_generations_threshold: 2
-        fitness_percentile_threshold: 0.15 # Bottom 15%
+        fitness_percentile_threshold: 0.25 # Bottom 25%
     - type: 'fusion'
       enabled: true
       check_every_n_generations: 1
