@@ -20,7 +20,7 @@ from graph.graph_persistence import GraphPersistence
 from graph.graph_initializer import SmallWorldsInitializer, ExampleGraphInitializer
 from graph.graph_dynamics import (
     GraphDynamicsStrategy, NullDynamicsStrategy, CompositeDynamicsStrategy,
-    NodeFusionAction, NodeDivisionAction, NodeDeathAction
+    NodeFusionAction, NodeDivisionAction, NodeDeathAction, EdgeRewireAction
 )
 
 def set_global_seed(seed: int):
@@ -67,6 +67,8 @@ def build_dynamics_strategy(config: dict, embedding_manager: emb_utils.Embedding
             action_objects.append(NodeDivisionAction(action_conf, llm_service))
         elif action_type == 'death':
             action_objects.append(NodeDeathAction(action_conf))
+        elif action_type == 'rewire':
+            action_objects.append(EdgeRewireAction(action_conf))
         else:
             logging.getLogger(__name__).warning(f"Unknown dynamic action type '{action_type}'. Skipping.")
     
@@ -165,6 +167,7 @@ if __name__ == "__main__":
             llm_service=llm_service,
             embedding_manager=embedding_manager,
             config=config,
+            dynamics_strategy=dynamics_strategy, # Pass the strategy object
             fitness_model=fitness_model_instance,
             avg_initial_word_count=avg_initial_wc
         )

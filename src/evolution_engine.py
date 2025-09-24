@@ -8,6 +8,7 @@ from graph.graph_manager import GraphManager
 from llm_service import LLMServiceInterface
 from fitness_model import FitnessModel
 from embeddings_utils import EmbeddingManager
+from graph.graph_dynamics import GraphDynamicsStrategy, CompositeDynamicsStrategy, EdgeRewireAction
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +20,14 @@ class EvolutionEngine:
                  llm_service: LLMServiceInterface,
                  embedding_manager: EmbeddingManager,
                  config: Dict,
+                 dynamics_strategy: GraphDynamicsStrategy,
                  fitness_model: Optional[FitnessModel] = None,
                  avg_initial_word_count: Optional[float] = None):
         self.graph_manager = graph_manager
         self.llm_service = llm_service
         self.embedding_manager = embedding_manager
         self.fitness_model = fitness_model
+        self.dynamics_strategy = dynamics_strategy
         self.config = config['simulation']
         self.llm_config = config['llm']
         self.fitness_model_huggingpath = self.config['fitness_model_huggingpath'].lower()
@@ -296,7 +299,8 @@ class EvolutionEngine:
                 updates_pending[node_id] = {
                     "action": action_type,
                     "current_meme": current_meme,
-                    "received_meme": best_received_meme
+                    "received_meme": best_received_meme,
+                    "sender_id": best_sender_id  # Store the influencer's ID
                 }
 
         # Perform LLM mutations and merges
@@ -346,10 +350,12 @@ class EvolutionEngine:
 
             final_meme, final_score = current_meme, current_score
             action_taken = "keep"
+            source_of_influence = None  # To store the influencer ID
 
             if node_id in updates_pending:
                 pending_action = updates_pending[node_id]["action"]
                 received_meme = updates_pending[node_id]["received_meme"]
+                source_of_influence = updates_pending[node_id]["sender_id"]
                 new_meme_text: Optional[str] = None
 
                 if pending_action == "mutate":
@@ -373,8 +379,27 @@ class EvolutionEngine:
             if action_taken != "keep":
                  logger.debug(f"Node {node_id}: Final action -> {action_taken}. Meme: '{final_meme[:30]}...' Score: {final_score}")
 
+            # Record the outcome for the dynamic edge moving action
+            if source_of_influence is not None and current_score is not None and final_score is not None:
+                was_negative = final_score < current_score
+                self._record_influence_outcome(source_of_influence, node_id, was_negative)
+
         self.graph_manager.clear_received_memes()
         logger.debug(f"Generation {generation}: Finished processing memes.")
+
+
+    def _record_influence_outcome(self, source_node: Any, target_node: Any, was_negative: bool):
+        """
+        Records the outcome of an influence event for dynamic graph actions that need it.
+        """
+        if not isinstance(self.dynamics_strategy, CompositeDynamicsStrategy):
+            return
+
+        # Find the specific action instance within the composite strategy
+        for action in self.dynamics_strategy.actions.values():
+            if isinstance(action, EdgeRewireAction):
+                action.record_influence_outcome(source_node, target_node, was_negative)
+                break # Assume only one instance of this action type
 
 
     def mutate_initial_if_all_same(self):

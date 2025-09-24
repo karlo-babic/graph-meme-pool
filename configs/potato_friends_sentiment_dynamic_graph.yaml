@@ -14,16 +14,30 @@ graph_generation:
     b: 0.8     # Probability of adding a backward edge
     inter_p: 0.05  # Probability of inter-group connection
 
+simulation:
+  generations: 500
+  threshold: 0.2  # Score ratio threshold for merge/mutate/keep decision
+  selection_strategy: 'fitness_similarity_product' # 'fitness' or 'fitness_similarity_product'
+  merge_converge_similarity_threshold: 0.9 # Min similarity for converge merge
+  merge_influence_similarity_threshold: 0.5 # Min similarity for influence merge
+  initial_score: true  # Whether to score initial memes before first generation
+  fitness_model_huggingpath: 'cardiffnlp/twitter-roberta-base-sentiment-latest' # path to a model on huggingface (e.g. 'cardiffnlp/twitter-roberta-base-sentiment-latest'), or empty string ('') -> using LLM with prompt_score below
+
 dynamic_graph:
   enabled: true
   initial_static_generations: 10
   actions:
+    - type: 'rewire'
+      enabled: true
+      check_every_n_generations: 1
+      params:
+        consecutive_bad_influence_threshold: 2
     - type: 'death'
       enabled: true
       check_every_n_generations: 1
       params:
         consecutive_generations_threshold: 2
-        fitness_percentile_threshold: 0.25 # Bottom 25%
+        fitness_percentile_threshold: 0.20 # Bottom 20%
     - type: 'fusion'
       enabled: true
       check_every_n_generations: 1
@@ -39,15 +53,6 @@ dynamic_graph:
         min_out_degree: 2
         fitness_top_percent: 0.2 # Top 20% fittest nodes are candidates
         connection_subset_ratio: 0.5
-
-simulation:
-  generations: 500
-  threshold: 0.2  # Score ratio threshold for merge/mutate/keep decision
-  selection_strategy: 'fitness_similarity_product' # 'fitness' or 'fitness_similarity_product'
-  merge_converge_similarity_threshold: 0.9 # Min similarity for converge merge
-  merge_influence_similarity_threshold: 0.5 # Min similarity for influence merge
-  initial_score: true  # Whether to score initial memes before first generation
-  fitness_model_huggingpath: 'cardiffnlp/twitter-roberta-base-sentiment-latest' # path to a model on huggingface (e.g. 'cardiffnlp/twitter-roberta-base-sentiment-latest'), or empty string ('') -> using LLM with prompt_score below
 
 llm:
   huggingpath: "microsoft/Phi-3-mini-4k-instruct"

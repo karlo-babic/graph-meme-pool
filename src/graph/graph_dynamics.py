@@ -4,7 +4,7 @@ import logging
 import math
 import numpy as np
 from abc import ABC, abstractmethod
-from typing import Dict, Any, List, TYPE_CHECKING
+from typing import Dict, Any, List, TYPE_CHECKING, Tuple
 
 from data_structures import MemeNodeData
 from embeddings_utils import EmbeddingManager
@@ -256,6 +256,108 @@ class NodeDeathAction(GraphAction):
             target_node = sorted_nodes[(i + 1) % len(sorted_nodes)]
             if not graph.has_edge(source_node, target_node):
                 graph.add_edge(source_node, target_node, weight=new_weight)
+
+class EdgeRewireAction(GraphAction):
+    """
+    An action that rewires incoming connections to a node if they
+    consistently result in a decrease in the node's meme fitness.
+    """
+    def __init__(self, config: Dict):
+        super().__init__(config)
+        # Tracks (source, target) -> consecutive bad influence count
+        self.bad_influence_streaks: Dict[Tuple[Any, Any], int] = {}
+
+    def get_state(self) -> dict:
+        """Returns the state of bad influence streaks for persistence."""
+        # Convert tuple keys to strings for JSON serialization
+        streaks_serializable = {f"{k[0]},{k[1]}": v for k, v in self.bad_influence_streaks.items()}
+        return {"bad_influence_streaks": streaks_serializable}
+
+    def set_state(self, state: dict):
+        """Restores the state of bad influence streaks from a dictionary."""
+        streaks_serializable = state.get("bad_influence_streaks", {})
+        # Convert string keys back to integer tuples, handling potential type errors
+        restored_streaks = {}
+        for k, v in streaks_serializable.items():
+            try:
+                parts = k.split(',')
+                if len(parts) == 2:
+                    restored_streaks[(int(parts[0]), int(parts[1]))] = v
+            except (ValueError, TypeError):
+                logger.warning(f"Could not deserialize bad influence streak key: {k}")
+        self.bad_influence_streaks = restored_streaks
+
+
+    def record_influence_outcome(self, source_node: Any, target_node: Any, was_negative: bool):
+        """
+        Updates the streak count for an edge based on the outcome of an influence event.
+
+        Args:
+            source_node: The node that provided the influential meme.
+            target_node: The node that received the meme and updated itself.
+            was_negative: True if the target node's fitness decreased, False otherwise.
+        """
+        edge_key = (source_node, target_node)
+        if was_negative:
+            self.bad_influence_streaks[edge_key] = self.bad_influence_streaks.get(edge_key, 0) + 1
+            logger.debug(f"Recorded negative influence from {source_node} to {target_node}. Streak is now {self.bad_influence_streaks[edge_key]}.")
+        else:
+            # If a positive influence occurs, the streak is broken.
+            if edge_key in self.bad_influence_streaks:
+                logger.debug(f"Positive influence from {source_node} to {target_node} broke a streak of {self.bad_influence_streaks[edge_key]}.")
+                self.bad_influence_streaks.pop(edge_key, None)
+
+    def execute(self, graph_manager: 'GraphManager', generation: int):
+        """Checks for edges that have crossed the bad influence threshold and rewires them."""
+        params = self.config.get('params', {})
+        threshold = params.get('consecutive_bad_influence_threshold', 3)
+        graph = graph_manager.get_graph()
+
+        # Create a copy of items to iterate over, as the dictionary may be modified
+        edges_to_rewire = []
+        for edge, streak_count in list(self.bad_influence_streaks.items()):
+            if streak_count >= threshold:
+                edges_to_rewire.append(edge)
+
+        for source_b, target_a in edges_to_rewire:
+            if not graph.has_edge(source_b, target_a):
+                # Edge might have been removed by another dynamic action already
+                self.bad_influence_streaks.pop((source_b, target_a), None)
+                continue
+
+            self._rewire_edge(graph_manager, source_b, target_a)
+            # Reset the streak after successful or attempted rewiring
+            self.bad_influence_streaks.pop((source_b, target_a), None)
+
+    def _rewire_edge(self, graph_manager: 'GraphManager', source_b: Any, target_a: Any):
+        """Performs the actual edge moving logic for B->A to C->A."""
+        graph = graph_manager.get_graph()
+        
+        # Find potential new sources (C), which are connected to the bad influencer (B) in either direction.
+        candidates_c = list(set(list(graph.successors(source_b)) + list(graph.predecessors(source_b))))
+                
+        # Filter candidates: C cannot be A, and C cannot already be connected to A.
+        valid_candidates = [
+            c for c in candidates_c
+            if c != target_a and not graph.has_edge(c, target_a)
+        ]
+
+        if not valid_candidates:
+            logger.debug(f"Could not rewire {source_b}->{target_a}: No valid replacement source found.")
+            return
+
+        # Select a new source C randomly from the valid candidates.
+        new_source_c = random.choice(valid_candidates)
+
+        # Preserve the weight and other attributes of the old edge.
+        old_edge_data = graph.get_edge_data(source_b, target_a).copy()
+        
+        # Perform the rewiring.
+        graph.remove_edge(source_b, target_a)
+        graph.add_edge(new_source_c, target_a, **old_edge_data)
+
+        logger.info(f"Rewired connection due to persistent bad influence: "
+                    f"Removed {source_b}->{target_a}, added {new_source_c}->{target_a}.")
 
 # --- Composite and Null Strategies ---
 
