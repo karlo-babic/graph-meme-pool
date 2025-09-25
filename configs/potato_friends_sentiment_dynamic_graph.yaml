@@ -1,4 +1,4 @@
-run_name: "potato_friends_sentiment_dynamic_graph"
+run_name: "potato_friends_sentiment_dynamic_rewire"
 
 paths:
   init_memes: "data/init_memes.txt"
@@ -8,7 +8,7 @@ graph_generation:
   initial_meme_assignment: 'random'  # Initial assignment of memes to nodes: 'random' or 'structured'
   params:  # For small_worlds
     g: 1       # Number of groups
-    n: 10      # Nodes per group
+    n: 42      # Nodes per group
     k: 4       # 4 Each node is joined with its k nearest neighbors in ring topology
     p: 0.4     # Probability of rewiring each edge
     b: 0.8     # Probability of adding a backward edge
@@ -32,19 +32,20 @@ dynamic_graph:
       check_every_n_generations: 1
       params:
         consecutive_bad_influence_threshold: 2
+        consecutive_failed_propagations_threshold: 2
     - type: 'death'
-      enabled: true
+      enabled: false
       check_every_n_generations: 1
       params:
         consecutive_generations_threshold: 2
         fitness_percentile_threshold: 0.20 # Bottom 20%
     - type: 'fusion'
-      enabled: true
+      enabled: false
       check_every_n_generations: 1
       params:
         similarity_threshold: 0.97 # Min similarity for fusion
     - type: 'division'
-      enabled: true
+      enabled: false
       check_every_n_generations: 1
       params:
         max_graph_nodes: 300

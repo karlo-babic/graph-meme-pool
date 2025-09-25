@@ -350,7 +350,10 @@ class EvolutionEngine:
 
             final_meme, final_score = current_meme, current_score
             action_taken = "keep"
-            source_of_influence = None  # To store the influencer ID
+            source_of_influence = None
+            
+            # Get all sender IDs for this node for this generation
+            all_senders = [sender_id for sender_id, _, _ in original_node_data.received_memes]
 
             if node_id in updates_pending:
                 pending_action = updates_pending[node_id]["action"]
@@ -375,31 +378,48 @@ class EvolutionEngine:
                     else:
                         action_taken = "keep (score failed)"
 
+            # Update the node's state
             self.graph_manager.update_node_meme(node_id, final_meme, final_score, generation)
             if action_taken != "keep":
                  logger.debug(f"Node {node_id}: Final action -> {action_taken}. Meme: '{final_meme[:30]}...' Score: {final_score}")
-
-            # Record the outcome for the dynamic edge moving action
+            
+            # --- Outcome Reporting for Adaptive Rewiring ---
+            # Determine if a change was successfully made
+            was_change_successful = action_taken not in ["keep", "keep (low score)", "keep (score failed)"]
+            
+            # Report bad influence outcome if applicable
             if source_of_influence is not None and current_score is not None and final_score is not None:
                 was_negative = final_score < current_score
-                self._record_influence_outcome(source_of_influence, node_id, was_negative)
+                self._record_bad_influence_outcome(source_of_influence, node_id, was_negative)
+
+            # Report propagation outcomes (success/failure) for all senders
+            if all_senders:
+                self._record_propagation_outcomes(node_id, all_senders, source_of_influence, was_change_successful)
 
         self.graph_manager.clear_received_memes()
         logger.debug(f"Generation {generation}: Finished processing memes.")
 
 
-    def _record_influence_outcome(self, source_node: Any, target_node: Any, was_negative: bool):
-        """
-        Records the outcome of an influence event for dynamic graph actions that need it.
-        """
+    def _record_bad_influence_outcome(self, source_node: Any, target_node: Any, was_negative: bool):
+        """Records the outcome of a direct influence event for the bad influence trigger."""
+        if not isinstance(self.dynamics_strategy, CompositeDynamicsStrategy):
+            return
+        
+        for action in self.dynamics_strategy.actions.values():
+            if isinstance(action, EdgeRewireAction):
+                action.record_bad_influence_outcome(source_node, target_node, was_negative)
+                break
+
+    def _record_propagation_outcomes(self, receiving_node: Any, all_senders: List[Any],
+                                     winning_sender: Any, was_change_successful: bool):
+        """Records the outcome of all propagation attempts to a node for the failure trigger."""
         if not isinstance(self.dynamics_strategy, CompositeDynamicsStrategy):
             return
 
-        # Find the specific action instance within the composite strategy
         for action in self.dynamics_strategy.actions.values():
             if isinstance(action, EdgeRewireAction):
-                action.record_influence_outcome(source_node, target_node, was_negative)
-                break # Assume only one instance of this action type
+                action.record_propagation_outcomes(receiving_node, all_senders, winning_sender, was_change_successful)
+                break
 
 
     def mutate_initial_if_all_same(self):

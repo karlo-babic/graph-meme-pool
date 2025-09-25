@@ -67,7 +67,7 @@ def build_dynamics_strategy(config: dict, embedding_manager: emb_utils.Embedding
             action_objects.append(NodeDivisionAction(action_conf, llm_service))
         elif action_type == 'death':
             action_objects.append(NodeDeathAction(action_conf))
-        elif action_type == 'rewire':
+        elif action_type == 'rewire': # Use 'rewire' as the type in config
             action_objects.append(EdgeRewireAction(action_conf))
         else:
             logging.getLogger(__name__).warning(f"Unknown dynamic action type '{action_type}'. Skipping.")
