@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Graph Meme Pool (GMP) Framework Hub</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --background-color: #f8f9fa;
+            --text-color: #333;
+            --card-bg: #ffffff;
+            --card-shadow: 0 4px 8px rgba(0,0,0,0.1);
+            --header-font: 'Helvetica Neue', Arial, sans-serif;
+            --body-font: 'Georgia', serif;
+            --code-font: 'Courier New', monospace;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: var(--body-font);
+            line-height: 1.7;
+            color: var(--text-color);
+            background-color: var(--background-color);
+            margin: 0;
+            padding: 0;
+            font-size: 16px;
+        }
+
+        .container {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 50px 20px;
+            text-align: center;
+        }
+
+        header h1 {
+            font-family: var(--header-font);
+            font-size: 2.8em;
+            margin: 0;
+            font-weight: 300;
+        }
+
+        header p {
+            font-family: var(--header-font);
+            font-size: 1.2em;
+            margin-top: 10px;
+            opacity: 0.9;
+        }
+
+        section {
+            padding: 50px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        section:last-of-type {
+            border-bottom: none;
+        }
+
+        h2 {
+            font-family: var(--header-font);
+            font-size: 2em;
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--secondary-color);
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+            text-align: center;
+        }
+
+        blockquote {
+            border-left: 4px solid var(--secondary-color);
+            padding-left: 20px;
+            margin: 20px 0;
+            font-style: italic;
+            color: #555;
+            font-size: 1.1em;
+        }
+
+        .resource-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            margin-top: 40px;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            box-shadow: var(--card-shadow);
+            padding: 25px;
+            transition: transform 0.3s, box-shadow 0.3s;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+        }
+
+        .card h3 {
+            font-family: var(--header-font);
+            color: var(--primary-color);
+            margin-top: 0;
+            font-size: 1.4em;
+        }
+
+        .card p {
+            flex-grow: 1;
+            margin-bottom: 20px;
+        }
+
+        .card .btn {
+            display: inline-block;
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-family: var(--header-font);
+            font-weight: 500;
+            text-align: center;
+            transition: background-color 0.3s;
+        }
+
+        .card .btn:hover {
+            background-color: #2980b9;
+        }
+        
+        .code-block {
+            background-color: #eef;
+            border: 1px solid #ddd;
+            border-left: 4px solid var(--secondary-color);
+            padding: 15px;
+            font-family: var(--code-font);
+            white-space: pre-wrap;
+            word-break: break-word;
+            border-radius: 5px;
+            font-size: 0.9em;
+            overflow-x: auto;
+        }
+
+        footer {
+            background-color: #343a40;
+            color: #f8f9fa;
+            text-align: center;
+            padding: 30px 20px;
+            font-family: var(--header-font);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Graph Meme Pool (GMP)</h1>
+        <p>A Computational Framework for Simulating the Evolution of Textual Content on Graphs</p>
+    </header>
+
+    <main class="container">
+
+        <section id="about">
+            <h2>About The Framework</h2>
+            <blockquote>
+                Graph Meme Pool (GMP) is a computational framework for simulating the evolution of text by modeling textual units as memes — replicable cultural information analogous to genes. Memes occupy nodes in a graph where edges represent pathways of interaction. They propagate probabilistically along these edges, after which a fitness function evaluates them to guide a selection process. This selection determines whether Large Language Models (LLMs) introduce variation by merging memes, adapting content during transmission. Through iterative cycles of propagation, selection, and variation, the system models how memes evolve, spread, and adapt within networked populations that can themselves change over time.
+            </blockquote>
+        </section>
+
+        <section id="code">
+            <h2>Code Repositories</h2>
+            <div class="resource-grid">
+                <div class="card">
+                    <h3>Main Repository (Latest Version)</h3>
+                    <p>The latest, actively developed version of the framework. Features dynamic graphs, advanced selection mechanisms, resumable simulations, and a robust experiment management system.</p>
+                    <a href="https://github.com/karlo-babic/graph-meme-pool" class="btn" target="_blank">View on GitHub</a>
+                </div>
+                <div class="card">
+                    <h3>Archival Repository (v1)</h3>
+                    <p>An archive containing the source code and configuration used for the original research paper, "Selection in the Meme Pool: Graph-Based Evolution of Textual Content".</p>
+                    <a href="https://github.com/karlo-babic/graph-meme-pool/tree/v1" class="btn" target="_blank">View v1 on GitHub</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="visualizations">
+            <h2>Visualizations</h2>
+             <div class="resource-grid">
+                <div class="card">
+                    <h3>Dynamic Simulation Replay</h3>
+                    <p>An interactive web-based visualization that replays a simulation generation by generation. Watch as meme content evolves within nodes and the network topology itself changes through node creation and removal.</p>
+                    <a href="/gmp_replay" class="btn" target="_blank">Launch Visualization</a>
+                </div>
+            </div>
+        </section>
+        
+        <section id="publications">
+            <h2>Publications</h2>
+            <div class="resource-grid">
+                 <div class="card">
+                    <h3>Selection in the Meme Pool: Graph-Based Evolution of Textual Content (ECAI 2025)</h3>
+                    <p>The research paper that introduced the foundational concepts of the Graph Meme Pool framework.</p>
+                    <a href="#" class="btn" target="_blank">View Paper (Link to follow)</a>
+                </div>
+            </div>
+        </section>
+        
+        <section id="citation">
+            <h2>Citation</h2>
+            <p>If you use the Graph Meme Pool (GMP) framework in your research, please cite the original paper which introduced its foundational concepts:</p>
+             <pre class="code-block"><code>@inproceedings{babic2025selection,
+  author    = {Babi\'{c}, Karlo},
+  title     = {Selection in the Meme Pool: Graph-Based Evolution of Textual Content},
+  booktitle = {Proceedings of the 28th European Conference on Artificial Intelligence (ECAI 2025)},
+  year      = {2025},
+  address   = {Bologna, Italy},
+  note      = {Accepted for publication}
+}</code></pre>
+        </section>
+    </main>
+    
+    <footer>
+        <p>Karlo Babić @ University of Rijeka</p>
+    </footer>
+
+</body>
+</html>

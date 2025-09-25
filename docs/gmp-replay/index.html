@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GMP Simulation Replay</title>
+    <style>
+        /* Basic layout and typography */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+            margin: 0;
+            padding: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #f0f2f5;
+        }
+
+        /* Cytoscape container */
+        #cy {
+            flex-grow: 1;
+            height: 100%;
+            background-color: #ffffff;
+        }
+
+        /* Side panel for controls and information */
+        #ui-panel {
+            width: 320px;
+            min-width: 320px;
+            height: 100%;
+            background-color: #fff;
+            box-shadow: -2px 0 8px rgba(0,0,0,0.1);
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 10;
+        }
+
+        h2 {
+            margin: 0 0 10px 0;
+            font-size: 1.2em;
+            color: #333;
+            border-bottom: 1px solid #e0e0e0;
+            padding-bottom: 10px;
+        }
+
+        /* Control groups styling */
+        .control-group {
+            margin-bottom: 20px;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-size: 0.9em;
+            color: #555;
+        }
+
+        /* URL input group */
+        .url-input-group {
+            display: flex;
+            gap: 5px;
+        }
+        .url-input-group input {
+            flex-grow: 1;
+            padding: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .url-input-group button {
+            padding: 5px 10px;
+            border: 1px solid #ccc;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .url-input-group button:hover {
+            background-color: #e0e0e0;
+        }
+
+        /* Playback controls container */
+        .playback-controls {
+            display: grid;
+            grid-template-columns: 1fr 2fr 1fr;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .playback-controls button, #reset-view-btn {
+            font-size: 16px;
+            padding: 8px 12px;
+            cursor: pointer;
+            border: 1px solid #ccc;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+        }
+        .playback-controls button:hover, #reset-view-btn:hover {
+            background-color: #e9e9e9;
+        }
+        
+        #play-pause-btn {
+            font-weight: bold;
+        }
+
+        /* Timeline slider */
+        #timeline-slider {
+            width: 100%;
+            cursor: pointer;
+        }
+        
+        /* File picker styling */
+        #file-picker {
+            width: 100%;
+            font-size: 0.9em;
+        }
+
+        /* Info boxes for global and node-specific data */
+        .info-box {
+            background-color: #f9f9f9;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 15px;
+            font-size: 0.9em;
+        }
+
+        .info-box p {
+            margin: 0 0 8px 0;
+            word-wrap: break-word;
+        }
+        .info-box p:last-child {
+            margin-bottom: 0;
+        }
+        .info-box strong {
+            color: #111;
+        }
+
+        /* Style for the selected node's meme history */
+        #selected-node-history {
+            margin-top: 10px;
+            max-height: 250px;
+            overflow-y: auto;
+            font-size: 0.8em;
+            line-height: 1.4;
+            border-top: 1px solid #ddd;
+            padding-top: 8px;
+        }
+
+        /* Tippy.js tooltip styling */
+        .tippy-box[data-theme~='gmp'] {
+            background-color: #333;
+            color: white;
+            border-radius: 4px;
+            font-size: 14px;
+            line-height: 1.4;
+            max-width: 350px;
+            text-align: left;
+        }
+        .tippy-box[data-theme~='gmp'][data-placement^='top'] > .tippy-arrow::before {
+            border-top-color: #333;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="cy"></div>
+
+    <div id="ui-panel">
+        <h2>GMP Replay Controls</h2>
+
+        <div class="control-group">
+            <label for="file-picker">Load from File:</label>
+            <input type="file" id="file-picker" accept=".json">
+        </div>
+        
+        <div class="control-group">
+            <label for="url-input">Load from URL:</label>
+            <div class="url-input-group">
+                <input type="text" id="url-input" placeholder="https://example.com/replay.json">
+                <button id="load-url-btn">Load</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <div class="playback-controls">
+                <button id="prev-gen-btn">« Prev</button>
+                <button id="play-pause-btn">Play</button>
+                <button id="next-gen-btn">Next »</button>
+            </div>
+            <input type="range" id="timeline-slider" min="0" max="0" value="0" disabled>
+        </div>
+         <div class="control-group">
+            <button id="reset-view-btn" style="width: 100%;">Reset View</button>
+        </div>
+
+        <div class="control-group info-box">
+            <p><strong>Generation:</strong> <span id="generation-display">N/A</span></p>
+            <p><strong>Total Nodes:</strong> <span id="node-count-display">N/A</span></p>
+        </div>
+        
+        <h2 id="selected-node-title">Selected Node Info</h2>
+        <div class="control-group info-box" id="selected-node-info">
+            <p>Click on a node to see its details and history.</p>
+        </div>
+    </div>
+
+    <!-- Load required JS libraries from CDN -->
+    <script src="https://unpkg.com/cytoscape/dist/cytoscape.min.js"></script>
+    <script src="https://unpkg.com/webcola/WebCola/cola.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-cola/cytoscape-cola.js"></script>
+    <script src="https://unpkg.com/@popperjs/core@2"></script>
+    <script src="https://unpkg.com/tippy.js@6"></script>
+
+    <!-- Load the main application logic -->
+    <script src="main.js"></script>
+
+</body>
+</html>
