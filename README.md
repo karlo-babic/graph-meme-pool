@@ -1,3 +1,5 @@
+[Webpage](https://karlo-babic.github.io/graph-meme-pool)
+
 # Graph Meme Pool (GMP) v2-dev
 
 Graph Meme Pool (GMP) is a computational framework for simulating the evolution of text by modeling textual units as memes - replicable cultural information analogous to genes. This branch contains the **v2-dev source code**, which extends the concepts from the original research paper with new features like dynamic graph topologies, advanced selection mechanisms, and a robust experiment management system.
