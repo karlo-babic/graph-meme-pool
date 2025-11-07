@@ -109,13 +109,12 @@ The YAML configuration file is central to controlling the simulation. Main secti
 If you use this code or framework in your research, please cite the original paper which introduced the foundational concepts:
 
 ```bibtex
-Not yet published
 @inproceedings{babic2025selection,
-  author    = {Babi\'{c}, Karlo},
-  title     = {Selection in the Meme Pool: Graph-Based Evolution of Textual Content},
-  booktitle = {Proceedings of the 28th European Conference on Artificial Intelligence (ECAI 2025)},
-  year      = {2025},
-  address   = {Bologna, Italy},
-  note      = {Accepted for publication}
+  title={Selection in the Meme Pool: Graph-Based Evolution of Textual Content},
+  author={Babi{\'c}, Karlo},
+  booktitle={European Conference on Artificial Intelligence (ECAI 2025)},
+  volume={413},
+  pages={1825--1832},
+  year={2025}
 }
 ```

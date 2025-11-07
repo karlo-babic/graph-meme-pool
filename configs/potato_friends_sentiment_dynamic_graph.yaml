@@ -15,7 +15,7 @@ graph_generation:
     inter_p: 0.05  # Probability of inter-group connection
 
 simulation:
-  generations: 500
+  generations: 1000
   threshold: 0.2  # Score ratio threshold for merge/mutate/keep decision
   selection_strategy: 'fitness_similarity_product' # 'fitness' or 'fitness_similarity_product'
   merge_converge_similarity_threshold: 0.9 # Min similarity for converge merge
@@ -31,8 +31,8 @@ dynamic_graph:
       enabled: true
       check_every_n_generations: 1
       params:
-        consecutive_bad_influence_threshold: 2
-        consecutive_failed_propagations_threshold: 2
+        consecutive_bad_influence_threshold: 3
+        consecutive_failed_propagations_threshold: 16
     - type: 'death'
       enabled: false
       check_every_n_generations: 1
