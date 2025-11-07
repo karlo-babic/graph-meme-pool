@@ -1,6 +1,6 @@
 # Graph Meme Pool (GMP) v1
 
-You are viewing the `v1` branch, which contains the specific version of the code used for the research paper: **"Selection in the Meme Pool: Graph-Based Evolution of Textual Content"**. (TODO: link the paper)
+You are viewing the `v1` branch, which contains the specific version of the code used for the research paper: **"Selection in the Meme Pool: Graph-Based Evolution of Textual Content"**.
 
 This branch is for archival and reproducibility purposes. For the latest features, bug fixes, and active development, please use the **[`main` branch](https://github.com/karlo-babic/graph-meme-pool/tree/main)**.
 
@@ -65,14 +65,13 @@ The `config.yaml` file is central to controlling the simulation. Main sections i
 If you use this code or framework in your research, please cite the original paper:
 
 ```bibtex
-Not yet published
 @inproceedings{babic2025selection,
-  author    = {Babi\'{c}, Karlo},
-  title     = {Selection in the Meme Pool: Graph-Based Evolution of Textual Content},
-  booktitle = {Proceedings of the 28th European Conference on Artificial Intelligence (ECAI 2025)},
-  year      = {2025},
-  address   = {Bologna, Italy},
-  note      = {Accepted for publication}
+  title={Selection in the Meme Pool: Graph-Based Evolution of Textual Content},
+  author={Babi{\'c}, Karlo},
+  booktitle={European Conference on Artificial Intelligence (ECAI 2025)},
+  volume={413},
+  pages={1825--1832},
+  year={2025}
 }
 ```
 
